@@ -96,7 +96,7 @@ namespace PrintOrdersGUI
                 // задаем текст для печати
                 result += "Дата: " + DateTime.Now.ToString() + "\n";
                 result += "Номер заказа: " + orderId + "\n";
-                result += "Количество страниц: " + pages;
+                result += "Количество страниц: " + pages; 
                 // печать строки result
                 j.Graphics.DrawString(result, new Font("Arial", 14), System.Drawing.Brushes.Black, 0, 0);
                 j.HasMorePages = false;
