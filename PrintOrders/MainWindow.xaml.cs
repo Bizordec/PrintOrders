@@ -37,7 +37,7 @@ namespace PrintOrdersGUI
         private PrintQueueMonitor pqm = null;
         private int counter = 0;
         private SortedDictionary<int, int> paused = null;
-        private bool createdOrder = false;
+        private bool orderIsCreated = false;
         private int totalPages = 0;
         private string orderId = "";
 
@@ -71,9 +71,9 @@ namespace PrintOrdersGUI
                 }
                 Application.Current.Dispatcher.Invoke(() => UnblockButtons());
                 PrintJobInfoCollection pjic = LocalPrintServer.GetDefaultPrintQueue().GetPrintJobInfoCollection();
-                if (createdOrder && (!paused.Any() || !pjic.Any()))
+                if (orderIsCreated && (!paused.Any() || !pjic.Any()))
                 {
-                    createdOrder = false;
+                    orderIsCreated = false;
                     paused.Clear();
                     totalPages = 0;
                     Application.Current.Dispatcher.Invoke(() => Hide());
@@ -92,24 +92,10 @@ namespace PrintOrdersGUI
             paused.Add(e.JobID, e.JobInfo.NumberOfPages);
             totalPages += e.JobInfo.NumberOfPages;
             Application.Current.Dispatcher.Invoke(() => UnblockButtons());
-            if (!IsVisible && !createdOrder)
+            if (!orderIsCreated)
             {
-                createdOrder = true;
-
-                string pages = e.JobInfo.NumberOfPages.ToString();
-
-                IPHostEntry hostEntry = Dns.GetHostEntry(Dns.GetHostName());
-                IPAddress[] addr = hostEntry.AddressList;
-                var ip = addr.Where(x => x.AddressFamily == AddressFamily.InterNetwork).FirstOrDefault();
-                int lastpart = int.Parse(ip.ToString().Split('.')[3]);
-                Random rng = new Random();
-                string alphabet = "АБВГДЕЖИКЛМНПРСТ";
-                char ipLetter = alphabet[(lastpart + alphabet.Length) % alphabet.Length];
-                char randLetter = alphabet[rng.Next(alphabet.Length)];
-                string letters = ipLetter.ToString() + randLetter.ToString();
-                orderId = letters + "-" + lastpart.ToString() + counter++.ToString();
-                
-                Application.Current.Dispatcher.Invoke(() => CreateOrder(new Job(pages, orderId, e.JobID)));
+                orderIsCreated = true;                
+                Application.Current.Dispatcher.Invoke(() => CreateOrder());
             }
             else
             {
@@ -117,10 +103,21 @@ namespace PrintOrdersGUI
             }      
         }
 
-        private void CreateOrder(Job j)
+        private void CreateOrder()
         {
             pagesLabel.Text = "";
-            orderLabel.Content = "Номер: " + j.OrderId;
+
+            IPHostEntry hostEntry = Dns.GetHostEntry(Dns.GetHostName());
+            IPAddress[] addr = hostEntry.AddressList;
+            var ip = addr.Where(x => x.AddressFamily == AddressFamily.InterNetwork).FirstOrDefault();
+            int lastpart = int.Parse(ip.ToString().Split('.')[3]);
+            Random rng = new Random();
+            string alphabet = "АБВГДЕЖИКЛМНПРСТ";
+            char ipLetter = alphabet[(lastpart + alphabet.Length) % alphabet.Length];
+            char randLetter = alphabet[rng.Next(alphabet.Length)];
+            string letters = ipLetter.ToString() + randLetter.ToString();
+            orderId = letters + "-" + lastpart.ToString() + counter++.ToString();
+            orderLabel.Content = "Номер: " + orderId;
             UpdateFilesList();
         }
 
@@ -130,7 +127,8 @@ namespace PrintOrdersGUI
             pagesLabel.Text = "";
             foreach (KeyValuePair<int, int> job in paused)
             {
-                pagesLabel.Text += "\r\n" + fileCount++ + "-й файл: " + job.Value + " стр.";
+                pagesLabel.Text += "\r\n" + fileCount++ + "-й файл: ";
+                pagesLabel.Text += job.Value != 0 ? job.Value + " стр." : "Н/Д";
             }
             totalLabel.Content = "Итого: " + totalPages + " стр.";
             if (!IsVisible)
@@ -199,7 +197,7 @@ namespace PrintOrdersGUI
                         
             Hide();
             totalPages = 0;
-            createdOrder = false;
+            orderIsCreated = false;
         }
 
         private void BlockButtons()
@@ -247,24 +245,6 @@ namespace PrintOrdersGUI
             private static void OnSystemTimeChanged(object sender, EventArgs e)
             {
                 timer.Interval = GetSleepTime();
-            }
-        }
-
-        class Job
-        {
-            public string FilePages { get; private set; } = "";
-            public string OrderId { get; private set; } = "";
-            public int JobId { get; private set; } = 0;
-            public Job(string pages, string orderId, int jobId)
-            {
-                FilePages = pages;
-                OrderId = orderId;
-                JobId = jobId;
-            }
-            public Job(string pages, int jobId)
-            {
-                FilePages = pages;
-                JobId = jobId;
             }
         }
     }

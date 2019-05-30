@@ -190,9 +190,6 @@ namespace Monitors
                     )
                 {
                    JOBSTATUS jStatus  = (JOBSTATUS)Enum.Parse(typeof(JOBSTATUS), data[i].NotifyData.Data.cbBuf.ToString());
-                    //if (jStatus == JOBSTATUS.JOB_STATUS_SPOOLING ||
-                    //    jStatus == JOBSTATUS.JOB_STATUS_PAUSED)
-                    //    continue;
                     int intJobID = (int)data[i].Id;
                     string strJobName = ""; 
                     PrintSystemJobInfo pji = null;
@@ -203,8 +200,6 @@ namespace Monitors
                         if (!objJobDict.ContainsKey(intJobID))
                             objJobDict[intJobID] = pji.Name;
                         strJobName = pji.Name;
-                        //if (pji.Name == "orderInfo")
-                          //  continue;
                     }
                     catch
                     {
