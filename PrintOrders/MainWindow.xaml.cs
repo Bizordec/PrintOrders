@@ -47,7 +47,7 @@ namespace PrintOrdersGUI
             if (!first)
             {
                 MessageBox.Show("PrintOrders уже запущен!", "Внимание!", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
+                Close();
             }
             InitializeComponent();
             Hide();
