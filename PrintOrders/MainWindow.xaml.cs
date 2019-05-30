@@ -34,89 +34,174 @@ namespace PrintOrdersGUI
     /// </summary>
     public partial class MainWindow : Window
     {
-        PrintQueueMonitor pqm = null;
-        int counter = 0;
-        List<int> pausedJobs = null;
-        private OrderInfo orderWindow = null;
-        private bool created = false;
+        private PrintQueueMonitor pqm = null;
+        private int counter = 0;
+        private List<int> pausedJobs = null;
+        private bool createdOrder = false;
+        private int fileCount = 1;
+        private int totalPages = 0;
+        private string orderId = "";
 
         public MainWindow()
         {
             InitializeComponent();
+            Hide();
             MidnightNotifier.DayChanged += (s, e) => { counter = 0; };
             pausedJobs = new List<int>();
             PrinterSettings settings = new PrinterSettings();
             pqm = new PrintQueueMonitor(settings.PrinterName);
-            pqm.OnJobStatusChange += new PrintJobStatusChanged(pqm_OnJobStatusChange);            
+            pqm.OnJobStatusChange += new PrintJobStatusChanged(pqm_OnJobStatusChange);
         }
-
+        
         void pqm_OnJobStatusChange(object Sender, PrintJobChangeEventArgs e)
-        {
-            if (e.JobStatus != 0)
+        {     
+            Application.Current.Dispatcher.Invoke(() => BlockButtons());
+            if (e.JobStatus.HasFlag(PrintSpool.JOBSTATUS.JOB_STATUS_DELETING))
+            {
+                if (pausedJobs.Contains(e.JobID))
+                {
+                    pausedJobs.Remove(e.JobID);
+                }
+                if (createdOrder && pausedJobs.Count() == 0)
+                {
+                    createdOrder = false;
+                    Application.Current.Dispatcher.Invoke(() => Hide());
+                }
                 return;
+            }            
+            if (e.JobStatus != 0 || e.JobName == "orderInfo" || e.JobInfo == null)
+                return;
+            if (pausedJobs.Contains(e.JobID))
+            {
+                pausedJobs.Remove(e.JobID);
+                return;
+            }                
+            Application.Current.Dispatcher.Invoke(() => UnblockButtons());
             e.JobInfo.Pause();
             pausedJobs.Add(e.JobID);
-            if (e.JobName.Contains("orderInfo"))
+            if (!IsVisible && !createdOrder)
             {
-                LocalPrintServer printServer = new LocalPrintServer();
-                PrintQueue pq = printServer.DefaultPrintQueue;
-                foreach (int jobId in pausedJobs)
-                {
-                    pq.GetJob(jobId).Resume();
-                }
-                pausedJobs.Clear();
-                //orderWindow = null;
+                createdOrder = true;
+
+                string pages = e.JobInfo.NumberOfPages.ToString();
+
+                IPHostEntry hostEntry = Dns.GetHostEntry(Dns.GetHostName());
+                IPAddress[] addr = hostEntry.AddressList;
+                var ip = addr.Where(x => x.AddressFamily == AddressFamily.InterNetwork).FirstOrDefault();
+                int lastpart = int.Parse(ip.ToString().Split('.')[3]);
+                Random rng = new Random();
+                string alphabet = "АБВГДЕЖИКЛМНПРСТ";
+                char ipLetter = alphabet[(lastpart + alphabet.Length) % alphabet.Length];
+                char randLetter = alphabet[rng.Next(alphabet.Length)];
+                string letters = ipLetter.ToString() + randLetter.ToString();
+                orderId = letters + "-" + lastpart.ToString() + counter++.ToString();
+                
+                Application.Current.Dispatcher.Invoke(() => CreateOrder(new Job(pages, orderId, e.JobID)));
             }
-            else if (orderWindow == null && !e.JobName.Contains("orderInfo"))
+            else
             {
-                Job job = new Job(e.JobInfo.NumberOfPages);
-                Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => CreateOrder(job)));
-                created = true;
-            }
-            else if (created && !e.JobName.Contains("orderInfo"))
-            {
-                Job job = new Job(e.JobInfo.NumberOfPages);
-                Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, 
-                    new Action(() => AddFile(job)));
-            }
+                string pages = e.JobInfo.NumberOfPages.ToString();
+                Application.Current.Dispatcher.Invoke(() => AddFile(new Job(pages, e.JobID)));
+            }      
         }
 
-        private void CreateOrder(Job job)
+        private void CreateOrder(Job j)
         {
-            Thread th = Thread.CurrentThread;
-            IPHostEntry hostEntry = Dns.GetHostEntry(Dns.GetHostName());
-            IPAddress[] addr = hostEntry.AddressList;
-            var ip = addr.Where(x => x.AddressFamily == AddressFamily.InterNetwork).FirstOrDefault();
-            int lastpart = int.Parse(ip.ToString().Split('.')[3]);
-            Random rng = new Random();
-            string alphabet = "АБВГДЕЖИКЛМНПРСТ";
-            char ipLetter = alphabet[(lastpart + alphabet.Length) % alphabet.Length];
-            char randLetter = alphabet[rng.Next(alphabet.Length)];
-            string letters = ipLetter.ToString() + randLetter.ToString();
-            string orderId = letters + "-" + lastpart.ToString() + counter++.ToString();
-
-            //orderWindow = OrderInfo.GetInstance(orderId, job.FilePages);
-            orderWindow = new OrderInfo(orderId, job.FilePages);
-            orderWindow.Show();
+            pagesLabel.Text = "";
+            fileCount = 1;
+            totalPages = 0;
+            orderLabel.Content = "Номер: " + j.OrderId;
+            AddFile(j);
         }
 
-        private void AddFile(Job job)
+        private void AddFile(Job j)
         {
-            if(orderWindow != null)
+            LocalPrintServer printServer = new LocalPrintServer();
+            PrintQueue pq = printServer.DefaultPrintQueue;
+            if (pq.GetJob(j.JobId).Name == "orderInfo")
+                return;
+            totalPages += int.Parse(j.FilePages);
+            pagesLabel.Text += "\r\n" + fileCount++.ToString() + "-й файл: " + j.FilePages + " стр.";
+            totalLabel.Content = "Итого: " + totalPages + " стр.";
+            if (!IsVisible)
             {
-                orderWindow.AddFile(job.FilePages);
-                if(!orderWindow.IsVisible)
-                {
-                    orderWindow.Show();
-                }
+                Show();
+            }            
+        }
+
+        private void AddButton_Click(object sender, RoutedEventArgs e)
+        {
+            Hide();
+        }
+
+        private void OkButton_Click(object sender, RoutedEventArgs e)
+        {
+            LocalPrintServer printServer = new LocalPrintServer();
+            PrintQueue pq = printServer.DefaultPrintQueue;
+            foreach (int jobId in pausedJobs)
+            {
+                pq.GetJob(jobId).Resume();
             }
-            
+
+            // объект для печати
+            PrintDocument printDocument = new PrintDocument
+            {
+                DocumentName = "orderInfo"
+            };
+            string pages = totalPages.ToString();
+            // обработчик события печати
+            printDocument.PrintPage += new PrintPageEventHandler(PrintPageHandler);
+            printDocument.Print();
+
+            // обработчик события печати
+            void PrintPageHandler(object s, PrintPageEventArgs j)
+            {
+                DirectoryInfo dir = Directory.CreateDirectory(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\PrintOrders\\");
+                string path = dir.FullName + "\\orders_info_" + DateTime.Now.ToShortDateString() + ".txt";
+                FileInfo fi1 = new FileInfo(path);
+                string row = DateTime.Now.ToShortDateString() + "\t" +
+                    DateTime.Now.ToShortTimeString() + "\t" +
+                    orderId + "\t\t" +
+                    pages;
+                if (!fi1.Exists)
+                {
+                    using (StreamWriter sw = fi1.CreateText())
+                    {
+                        sw.WriteLine("Дата\t\tВремя\tНомер заказа\tКол-во страниц");
+                        sw.WriteLine(row);
+                    }
+                }
+                else
+                {
+                    using (StreamWriter sw = File.AppendText(path))
+                    {
+                        sw.WriteLine(row);
+                    }
+                }
+
+                string result = "";
+                // задаем текст для печати
+                result += "Дата: " + DateTime.Now.ToString() + "\n";
+                result += "Номер заказа: " + orderId + "\n";
+                result += "Количество страниц: " + pages;
+                // печать строки result
+                j.Graphics.DrawString(result, new Font("Arial", 14), System.Drawing.Brushes.Black, 0, 0);
+            }                      
+                        
+            Hide();
+            createdOrder = false;
         }
 
         private void BlockButtons()
         {
-            orderWindow.okButton.IsEnabled = false;
-            orderWindow.addButton.IsEnabled = false;
+            okButton.IsEnabled = false;
+            addButton.IsEnabled = false;
+        }
+
+        private void UnblockButtons()
+        {
+            okButton.IsEnabled = true;
+            addButton.IsEnabled = true;
         }
 
         static class MidnightNotifier
@@ -157,10 +242,19 @@ namespace PrintOrdersGUI
 
         class Job
         {
-            public int FilePages { get; private set; }
-            public Job(int pages)
+            public string FilePages { get; private set; } = "";
+            public string OrderId { get; private set; } = "";
+            public int JobId { get; private set; } = 0;
+            public Job(string pages, string orderId, int jobId)
             {
                 FilePages = pages;
+                OrderId = orderId;
+                JobId = jobId;
+            }
+            public Job(string pages, int jobId)
+            {
+                FilePages = pages;
+                JobId = jobId;
             }
         }
     }
