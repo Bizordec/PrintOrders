@@ -25,7 +25,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Data;
 using Monitors;
-
+using System.Diagnostics;
 
 namespace PrintOrdersGUI
 {
@@ -43,6 +43,12 @@ namespace PrintOrdersGUI
 
         public MainWindow()
         {
+            Mutex m = new Mutex(true, Process.GetCurrentProcess().ProcessName, out bool first);
+            if (!first)
+            {
+                MessageBox.Show("PrintOrders уже запущен!", "Внимание!", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
             InitializeComponent();
             Hide();
             MidnightNotifier.DayChanged += (s, e) => { counter = 0; };
