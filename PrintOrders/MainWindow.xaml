@@ -6,9 +6,9 @@
         xmlns:local="clr-namespace:PrintJobsGUI"
         mc:Ignorable="d"
         Title="PrintOrders" 
-        Topmost="False" WindowStartupLocation="CenterScreen" 
+        Topmost="True" WindowStartupLocation="CenterScreen" 
         ResizeMode="NoResize" SizeToContent="WidthAndHeight" 
-        Background="#FF0371B0" WindowStyle="SingleBorderWindow"
+        Background="#FF0371B0" WindowStyle="None"
         FocusManager.FocusedElement="{Binding ElementName=okButton}">
     <Window.Resources>
         <Style TargetType="Button">
