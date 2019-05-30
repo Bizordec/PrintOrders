@@ -36,9 +36,8 @@ namespace PrintOrdersGUI
     {
         private PrintQueueMonitor pqm = null;
         private int counter = 0;
-        private List<int> pausedJobs = null;
+        private SortedDictionary<int, int> paused = null;
         private bool createdOrder = false;
-        private int fileCount = 1;
         private int totalPages = 0;
         private string orderId = "";
 
@@ -47,7 +46,7 @@ namespace PrintOrdersGUI
             InitializeComponent();
             Hide();
             MidnightNotifier.DayChanged += (s, e) => { counter = 0; };
-            pausedJobs = new List<int>();
+            paused = new SortedDictionary<int, int>();
             PrinterSettings settings = new PrinterSettings();
             pqm = new PrintQueueMonitor(settings.PrinterName);
             pqm.OnJobStatusChange += new PrintJobStatusChanged(pqm_OnJobStatusChange);
@@ -58,27 +57,35 @@ namespace PrintOrdersGUI
             Application.Current.Dispatcher.Invoke(() => BlockButtons());
             if (e.JobStatus.HasFlag(PrintSpool.JOBSTATUS.JOB_STATUS_DELETING))
             {
-                if (pausedJobs.Contains(e.JobID))
+                if(paused.ContainsKey(e.JobID))
                 {
-                    pausedJobs.Remove(e.JobID);
+                    totalPages -= paused[e.JobID];
+                    paused.Remove(e.JobID);
+                    Application.Current.Dispatcher.Invoke(() => UpdateFilesList());                    
                 }
-                if (createdOrder && pausedJobs.Count() == 0)
+                Application.Current.Dispatcher.Invoke(() => UnblockButtons());
+                PrintJobInfoCollection pjic = LocalPrintServer.GetDefaultPrintQueue().GetPrintJobInfoCollection();
+                if (createdOrder && (!paused.Any() || !pjic.Any()))
                 {
                     createdOrder = false;
+                    paused.Clear();
+                    totalPages = 0;
                     Application.Current.Dispatcher.Invoke(() => Hide());
+                    return;
                 }
                 return;
             }            
             if (e.JobStatus != 0 || e.JobName == "orderInfo" || e.JobInfo == null)
                 return;
-            if (pausedJobs.Contains(e.JobID))
+            if (paused.ContainsKey(e.JobID))
             {
-                pausedJobs.Remove(e.JobID);
+                paused.Remove(e.JobID);
                 return;
-            }                
-            Application.Current.Dispatcher.Invoke(() => UnblockButtons());
+            }            
             e.JobInfo.Pause();
-            pausedJobs.Add(e.JobID);
+            paused.Add(e.JobID, e.JobInfo.NumberOfPages);
+            totalPages += e.JobInfo.NumberOfPages;
+            Application.Current.Dispatcher.Invoke(() => UnblockButtons());
             if (!IsVisible && !createdOrder)
             {
                 createdOrder = true;
@@ -100,33 +107,30 @@ namespace PrintOrdersGUI
             }
             else
             {
-                string pages = e.JobInfo.NumberOfPages.ToString();
-                Application.Current.Dispatcher.Invoke(() => AddFile(new Job(pages, e.JobID)));
+                Application.Current.Dispatcher.Invoke(() => UpdateFilesList());
             }      
         }
 
         private void CreateOrder(Job j)
         {
             pagesLabel.Text = "";
-            fileCount = 1;
-            totalPages = 0;
             orderLabel.Content = "Номер: " + j.OrderId;
-            AddFile(j);
+            UpdateFilesList();
         }
 
-        private void AddFile(Job j)
+        private void UpdateFilesList()
         {
-            LocalPrintServer printServer = new LocalPrintServer();
-            PrintQueue pq = printServer.DefaultPrintQueue;
-            if (pq.GetJob(j.JobId).Name == "orderInfo")
-                return;
-            totalPages += int.Parse(j.FilePages);
-            pagesLabel.Text += "\r\n" + fileCount++.ToString() + "-й файл: " + j.FilePages + " стр.";
+            int fileCount = 1;
+            pagesLabel.Text = "";
+            foreach (KeyValuePair<int, int> job in paused)
+            {
+                pagesLabel.Text += "\r\n" + fileCount++ + "-й файл: " + job.Value + " стр.";
+            }
             totalLabel.Content = "Итого: " + totalPages + " стр.";
             if (!IsVisible)
             {
                 Show();
-            }            
+            }
         }
 
         private void AddButton_Click(object sender, RoutedEventArgs e)
@@ -136,11 +140,10 @@ namespace PrintOrdersGUI
 
         private void OkButton_Click(object sender, RoutedEventArgs e)
         {
-            LocalPrintServer printServer = new LocalPrintServer();
-            PrintQueue pq = printServer.DefaultPrintQueue;
-            foreach (int jobId in pausedJobs)
+            PrintQueue pq = LocalPrintServer.GetDefaultPrintQueue();
+            foreach(KeyValuePair<int, int> job in paused)
             {
-                pq.GetJob(jobId).Resume();
+                pq.GetJob(job.Key).Resume();
             }
 
             // объект для печати
@@ -189,6 +192,7 @@ namespace PrintOrdersGUI
             }                      
                         
             Hide();
+            totalPages = 0;
             createdOrder = false;
         }
 
