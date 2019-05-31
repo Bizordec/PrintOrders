@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "PrintOrders"
-#define MyAppVersion "1.0"
+#define MyAppVersion "2.0"
 #define MyAppPublisher "Ilia B."
 #define MyAppExeName "PrintOrders.exe"
 
@@ -20,6 +20,11 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 OutputDir=D:\Mirea_stuff\PrintJobs\PrintOrders
 OutputBaseFilename=PrintOrders_setup
+; "ArchitecturesInstallIn64BitMode=x64" requests that the install be
+; done in "64-bit mode" on x64, meaning it should use the native
+; 64-bit Program Files directory and the 64-bit view of the registry.
+; On all other architectures it will install in "32-bit mode".
+ArchitecturesInstallIn64BitMode=x64
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -29,7 +34,10 @@ DisableWelcomePage=no
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Files]
-Source: "D:\Mirea_stuff\PrintJobs\PrintOrders\PrintOrders\bin\Release\PrintOrders.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Install MyProg-x64.exe if running in 64-bit mode (x64; see above),
+; MyProg.exe otherwise.
+Source: "D:\Mirea_stuff\PrintJobs\PrintOrders\PrintOrders\bin\Release\PrintOrders.exe"; DestDir: "{app}"; Check: Is64BitInstallMode; Flags: ignoreversion
+Source: "D:\Mirea_stuff\PrintJobs\PrintOrders\PrintOrders\bin\Release\PrintOrders-x32.exe"; DestDir: "{app}"; Check: not Is64BitInstallMode; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
@@ -39,3 +47,5 @@ Name: "{commonstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
+[UninstallRun]
+Filename: "{cmd}"; Parameters: "/C ""taskkill /im {#MyAppExeName} /f /t"
