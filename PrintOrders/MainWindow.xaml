@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:PrintJobsGUI"
         mc:Ignorable="d"
         Title="PrintOrders" 
-        Topmost="True" WindowStartupLocation="CenterScreen" 
+        Topmost="False" WindowStartupLocation="CenterScreen" 
         ResizeMode="NoResize" SizeToContent="WidthAndHeight" 
         Background="#FF0371B0" WindowStyle="None" Icon="Images/printer.ico"
         FocusManager.FocusedElement="{Binding ElementName=okButton}">

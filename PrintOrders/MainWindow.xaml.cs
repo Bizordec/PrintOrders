@@ -152,6 +152,7 @@ namespace PrintOrdersGUI
             {
                 pq.GetJob(job.Key).Cancel();
             }
+            pausedJobs.Clear();
         }
 
         private void OkButton_Click(object sender, RoutedEventArgs e)
