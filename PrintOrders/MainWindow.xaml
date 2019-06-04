@@ -8,8 +8,8 @@
         Title="PrintOrders" 
         Topmost="True" WindowStartupLocation="CenterScreen" 
         ResizeMode="NoResize" SizeToContent="WidthAndHeight" 
-        Background="#FF0371B0" WindowStyle="None" Icon="Images/printer.ico"
-        FocusManager.FocusedElement="{Binding ElementName=okButton}">
+        Background="#FF0371B0" WindowStyle="None"
+        FocusManager.FocusedElement="{Binding ElementName=okButton}" Icon="pack://application:,,,/printer.ico">
     <Window.Resources>
         <Style TargetType="Button">
             <Style.Triggers>

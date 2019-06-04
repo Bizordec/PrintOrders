@@ -12,15 +12,13 @@
 AppId={{C4156B3B-9B0C-479E-A960-88991CD91A63}
 AppName="Print Orders"
 AppVersion={#MyAppVersion}
-AppMutex=PrintOrders
 ;AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
-;PrivilegesRequired=lowest
-OutputDir=D:\Mirea_stuff\PrintJobs\PrintOrders
-OutputBaseFilename=PrintOrders_setup{#MyAppVersion}
+OutputDir=D:\Mirea_stuff\PrintJobs\
+OutputBaseFilename=PrintOrders-{#MyAppVersion}_setup
 ; "ArchitecturesInstallIn64BitMode=x64" requests that the install be
 ; done in "64-bit mode" on x64, meaning it should use the native
 ; 64-bit Program Files directory and the 64-bit view of the registry.
@@ -35,16 +33,8 @@ DisableWelcomePage=no
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Files]
-; Install MyProg-x64.exe if running in 64-bit mode (x64; see above),
-; MyProg.exe otherwise.
-Source: "PrintOrders.exe"; DestDir: "{app}"; Flags: ignoreversion
-;Source: "PrintOrders-x32.exe"; DestDir: "{app}"; Check: not Is64BitInstallMode; Flags: ignoreversion
+Source: "D:\Mirea_stuff\PrintJobs\PrintOrders\PrintOrders\bin\x86\Release\PrintOrders.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
-; dll used to check running notepad at install time
-Source: psvince.dll; flags: dontcopy
-;psvince is installed in {app} folder, so it will be
-;loaded at uninstall time ;to check if notepad is running
-Source: psvince.dll; DestDir: {app}
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -59,9 +49,6 @@ Root: HKCU; Subkey: "Software\Microsoft\Office\12.0\Word\Options"; ValueType: dw
 Root: HKCU; Subkey: "Software\Microsoft\Office\14.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist
 Root: HKCU; Subkey: "Software\Microsoft\Office\15.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist
 Root: HKCU; Subkey: "Software\Microsoft\Office\16.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist
-
-;[UninstallRun]
-;Filename: "{cmd}"; Parameters: "/C ""taskkill /im {#MyAppExeName} /f /t"
 
 [Code]
 function IsAppRunning(const FileName: string): Boolean;
@@ -80,9 +67,11 @@ begin
   FSWbemLocator := Unassigned;
 end;
 
-function InitializeSetup: boolean;
+function InitializeUninstall: boolean;
 begin
-  Result := not IsAppRunning('notepad.exe');
+  Result := not IsAppRunning('{#MyAppExeName}');
   if not Result then
-  MsgBox('notepad.exe is running. Please close the application before running the installer ', mbError, MB_OK);
+  MsgBox('{#MyAppExeName} запущен.' + #13#10 + #13#10 + 
+  'Пожалуйста, закройте приложение' + #13#10 + 
+  'перед запуском деинсталлятора.', mbError, MB_OK);
 end;

@@ -41,13 +41,14 @@ namespace PrintOrdersGUI
         private bool orderIsCreated = false;
         private int totalPages = 0;
         private string orderId = "";
+        private static Mutex m;
 
         public MainWindow()
         {
-            Mutex mutex = new Mutex(true, Process.GetCurrentProcess().ProcessName, out bool first);
+            m = new Mutex(true, Process.GetCurrentProcess().ProcessName, out bool first);
             if (!first)
             {
-                MessageBox.Show("PrintOrders уже запущен!", "Внимание!", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("PrintOrders.exe уже запущен!", "Внимание!", MessageBoxButton.OK, MessageBoxImage.Warning);
                 Close();
             }
             InitializeComponent();
