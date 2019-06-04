@@ -20,104 +20,37 @@ namespace PrintSpool
         JOB_CONTROL_RELEASE = 9,
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
     public struct DEVMODE
     {
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
         public string dmDeviceName;
-
         public short dmSpecVersion;
         public short dmDriverVersion;
         public short dmSize;
         public short dmDriverExtra;
         public int dmFields;
-        public int dmPositionX;
-        public int dmPositionY;
-        public int dmDisplayOrientation;
-        public int dmDisplayFixedOutput;
+        public short dmOrientation;
+        public short dmPaperSize;
+        public short dmPaperLength;
+        public short dmPaperWidth;
+        public short dmScale;
+        public short dmCopies;
+        public short dmDefaultSource;
+        public short dmPrintQuality;
         public short dmColor;
         public short dmDuplex;
         public short dmYResolution;
         public short dmTTOption;
         public short dmCollate;
-
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
         public string dmFormName;
-
         public short dmLogPixels;
-        public short dmBitsPerPel;
+        public int dmBitsPerPel;
         public int dmPelsWidth;
         public int dmPelsHeight;
         public int dmDisplayFlags;
         public int dmDisplayFrequency;
-        public int dmICMMethod;
-        public int dmICMIntent;
-        public int dmMediaType;
-        public int dmDitherType;
-        public int dmReserved1;
-        public int dmReserved2;
-        public int dmPanningWidth;
-        public int dmPanningHeight;
-
-        public override string ToString()
-        {
-            return string.Format(
-                @"dmDeviceName == '{0}',
-dmSpecVersion == {1},
-dmDriverVersion == {2},
-dmSize == {3},
-dmDriverExtra == {4},
-dmFields == {5},
-dmPositionX == {6},
-dmPositionY == {7},
-dmDisplayOrientation == {8},
-dmDisplayFixedOutput == {9},
-dmColor == {10},
-dmDuplex == {11},
-dmYResolution == {12},
-dmTTOption == {13},
-dmCollate == {14},
-dmFormName == {15},
-dmLogPixels == {16},
-dmBitsPerPel == {17},
-dmPelsWidth == {18},
-dmPelsHeight == {19},
-dmDisplayFlags == {20},
-dmDisplayFrequency == {21},
-dmICMMethod == {22},
-dmICMIntent == {23},
-dmMediaType == {24},
-dmPanningWidth == {25},
-dmPanningHeight == {26}",
-                dmDeviceName,
-                dmSpecVersion,
-                dmDriverVersion,
-                dmSize,
-                dmDriverExtra,
-                dmFields,
-                dmPositionX,
-                dmPositionY,
-                dmDisplayOrientation,
-                dmDisplayFixedOutput,
-                dmColor,
-                dmDuplex,
-                dmYResolution,
-                dmTTOption,
-                dmCollate,
-                dmFormName,
-                dmLogPixels,
-                dmBitsPerPel,
-                dmPelsWidth,
-                dmPelsHeight,
-                dmDisplayFlags,
-                dmDisplayFrequency,
-                dmICMMethod,
-                dmICMIntent,
-                dmMediaType,
-                dmPanningWidth,
-                dmPanningHeight);
-
-        }
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -232,6 +165,35 @@ dmPanningHeight == {26}",
         public UInt32 TotalPages;
         public UInt32 PagesPrinted;
         public SYSTEMTIME Submitted;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    public struct JOB_INFO_2
+    {
+        public UInt32 JobId;
+        public IntPtr pPrinterName;
+        public IntPtr pMachineName;
+        public IntPtr pUserName;
+        public IntPtr pDocument;
+        public IntPtr pNotifyName;
+        public IntPtr pDatatype;
+        public IntPtr pPrintProcessor;
+        public IntPtr pParameters;
+        public IntPtr pDriverName;
+        public IntPtr pDevMode;
+        public IntPtr pStatus;
+        public IntPtr pSecurityDescriptor;
+        public UInt32 Status;
+        public UInt32 Priority;
+        public UInt32 Position;
+        public UInt32 StartTime;
+        public UInt32 UntilTime;
+        public UInt32 TotalPages;
+        public UInt32 Size;
+        public SYSTEMTIME Submitted;
+        public UInt32 Time;
+        public UInt32 PagesPrinted;
+
     }
 
     public struct JOBINFO

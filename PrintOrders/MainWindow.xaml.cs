@@ -26,6 +26,7 @@ using System.Net.Sockets;
 using System.Data;
 using Monitors;
 using System.Diagnostics;
+using System.Management;
 
 namespace PrintOrdersGUI
 {
@@ -36,14 +37,14 @@ namespace PrintOrdersGUI
     {
         private PrintQueueMonitor pqm = null;
         private int counter = 0;
-        private SortedDictionary<int, int> pausedJobs = null;
+        private SortedDictionary<int, JobPagesInfo> pausedJobs = null;
         private bool orderIsCreated = false;
         private int totalPages = 0;
         private string orderId = "";
 
         public MainWindow()
         {
-            Mutex m = new Mutex(true, Process.GetCurrentProcess().ProcessName, out bool first);
+            Mutex mutex = new Mutex(true, Process.GetCurrentProcess().ProcessName, out bool first);
             if (!first)
             {
                 MessageBox.Show("PrintOrders уже запущен!", "Внимание!", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -52,7 +53,7 @@ namespace PrintOrdersGUI
             InitializeComponent();
             Hide();
             MidnightNotifier.DayChanged += (s, e) => { counter = 0; };
-            pausedJobs = new SortedDictionary<int, int>();
+            pausedJobs = new SortedDictionary<int, JobPagesInfo>();
             PrinterSettings settings = new PrinterSettings();
             pqm = new PrintQueueMonitor(settings.PrinterName);
             pqm.OnJobStatusChange += new PrintJobStatusChanged(pqm_OnJobStatusChange);
@@ -65,7 +66,7 @@ namespace PrintOrdersGUI
             {
                 if(pausedJobs.ContainsKey(e.JobID))
                 {
-                    totalPages -= pausedJobs[e.JobID];
+                    totalPages -= pausedJobs[e.JobID].TotalPages;
                     pausedJobs.Remove(e.JobID);
                     Application.Current.Dispatcher.Invoke(() => UpdateFilesList());                    
                 }
@@ -80,7 +81,8 @@ namespace PrintOrdersGUI
                     return;
                 }
                 return;
-            }            
+            }
+            Application.Current.Dispatcher.Invoke(() => UnblockButtons());
             if (e.JobStatus != 0 || e.JobName == "orderInfo" || e.JobInfo == null)
                 return;
             if (pausedJobs.ContainsKey(e.JobID))
@@ -89,9 +91,10 @@ namespace PrintOrdersGUI
                 return;
             }            
             e.JobInfo.Pause();
-            pausedJobs.Add(e.JobID, e.JobInfo.NumberOfPages);
-            totalPages += e.JobInfo.NumberOfPages;
-            Application.Current.Dispatcher.Invoke(() => UnblockButtons());
+            
+            JobPagesInfo job = new JobPagesInfo(e.JobInfo.NumberOfPages, e.JobCopies);
+            pausedJobs.Add(e.JobID, job);
+            totalPages += job.TotalPages;
             if (!orderIsCreated)
             {
                 orderIsCreated = true;                
@@ -125,27 +128,36 @@ namespace PrintOrdersGUI
         {
             int fileCount = 1;
             pagesLabel.Text = "";
-            foreach (KeyValuePair<int, int> job in pausedJobs)
+            foreach (KeyValuePair<int, JobPagesInfo> job in pausedJobs)
             {
                 pagesLabel.Text += "\r\n" + fileCount++ + "-й файл: ";
-                pagesLabel.Text += job.Value != 0 ? job.Value + " стр." : "Н/Д";
+                pagesLabel.Text += job.Value.Pages != 0 ? job.Value.Pages + " стр.\t(копий: " + job.Value.Copies + ")" : "Н/Д";
             }
             totalLabel.Content = "Итого: " + totalPages + " стр.";
             if (!IsVisible)
-            {
                 Show();
-            }
+            if(WindowState == WindowState.Minimized)
+                WindowState = WindowState.Normal;
         }
 
         private void AddButton_Click(object sender, RoutedEventArgs e)
         {
-            Hide();
+            WindowState = WindowState.Minimized;
+        }
+
+        private void CancelButton_Click(object sender, RoutedEventArgs e)
+        {
+            PrintQueue pq = LocalPrintServer.GetDefaultPrintQueue();
+            foreach (KeyValuePair<int, JobPagesInfo> job in pausedJobs)
+            {
+                pq.GetJob(job.Key).Cancel();
+            }
         }
 
         private void OkButton_Click(object sender, RoutedEventArgs e)
         {
             PrintQueue pq = LocalPrintServer.GetDefaultPrintQueue();
-            foreach(KeyValuePair<int, int> job in pausedJobs)
+            foreach(KeyValuePair<int, JobPagesInfo> job in pausedJobs)
             {
                 pq.GetJob(job.Key).Resume();
             }
@@ -245,6 +257,19 @@ namespace PrintOrdersGUI
             private static void OnSystemTimeChanged(object sender, EventArgs e)
             {
                 timer.Interval = GetSleepTime();
+            }
+        }
+
+        public class JobPagesInfo
+        {
+            public int Pages { get; private set; }
+            public int Copies { get; private set; }
+            public int TotalPages { get; private set; }
+            public JobPagesInfo(int pages, short copies)
+            {
+                Pages = pages;
+                Copies = copies;
+                TotalPages = pages * copies;
             }
         }
     }

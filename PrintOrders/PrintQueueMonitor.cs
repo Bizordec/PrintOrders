@@ -13,27 +13,19 @@ namespace Monitors
 
     public class PrintJobChangeEventArgs : EventArgs
     {
-        #region private variables
-        private int _jobID=0;
-        private string _jobName = "";
-        private JOBSTATUS _jobStatus = new JOBSTATUS();
-        private PrintSystemJobInfo _jobInfo = null;
-        private int _jobPages = 0;
-        #endregion
-
-        public int JobID { get { return _jobID;}  }
-        public string JobName { get { return _jobName; } }
-        public JOBSTATUS JobStatus { get { return _jobStatus; } }
-        public PrintSystemJobInfo JobInfo { get { return _jobInfo; } }
-        public int JobPages { get { return _jobPages; } }
-        public PrintJobChangeEventArgs(int intJobID, string strJobName, JOBSTATUS jStatus, PrintSystemJobInfo objJobInfo, int pagesCount)
+        public int JobID { get; } = 0;
+        public string JobName { get; } = "";
+        public JOBSTATUS JobStatus { get; } = new JOBSTATUS();
+        public PrintSystemJobInfo JobInfo { get; } = null;
+        public short JobCopies { get; set; } = 0;
+        public PrintJobChangeEventArgs(int intJobID, string strJobName, JOBSTATUS jStatus, PrintSystemJobInfo objJobInfo, short shortJobCopies)
             : base()
         {
-            _jobID = intJobID;
-            _jobName = strJobName;
-            _jobStatus = jStatus;
-            _jobInfo = objJobInfo;
-            _jobPages = pagesCount;
+            JobID = intJobID;
+            JobName = strJobName;
+            JobStatus = jStatus;
+            JobInfo = objJobInfo;
+            JobCopies = shortJobCopies;
         }
     }
 
@@ -76,6 +68,20 @@ namespace Monitors
                              [InAttribute(), MarshalAs(UnmanagedType.LPStruct)] PRINTER_NOTIFY_OPTIONS pPrinterNotifyOptions,
                             [OutAttribute()] out IntPtr lppPrinterNotifyInfo
                                  );
+
+        [DllImport(
+        "winspool.drv",
+        EntryPoint = "GetJob",
+        SetLastError = true,
+        ExactSpelling = false,
+        CallingConvention = CallingConvention.StdCall)]
+        private static extern bool GetJob
+        ([InAttribute()] IntPtr hPrinter,
+        [InAttribute()] UInt32 JobId,
+        [InAttribute()] UInt32 Level,
+        [OutAttribute()] IntPtr pJob,
+        [InAttribute()] UInt32 cbBuf,
+        [OutAttribute()] out UInt32 pcbNeeded);        
         #endregion
 
         #region Constants
@@ -170,7 +176,7 @@ namespace Monitors
             #endregion 
 
             #region populate Notification Information
-            //Now, let us initialize and populate the Notify Info data
+            //Now, let us initialize and populate the Notify Info data            
             PRINTER_NOTIFY_INFO info = (PRINTER_NOTIFY_INFO)Marshal.PtrToStructure(pNotifyInfo, typeof(PRINTER_NOTIFY_INFO));
             long pData = (int)pNotifyInfo + (long)Marshal.OffsetOf(typeof(PRINTER_NOTIFY_INFO), "aData");
             PRINTER_NOTIFY_INFO_DATA[] data = new PRINTER_NOTIFY_INFO_DATA[info.Count];
@@ -186,10 +192,9 @@ namespace Monitors
             {
 
                 if ((data[i].Field == (ushort)PRINTERJOBNOTIFICATIONTYPES.JOB_NOTIFY_FIELD_STATUS) && 
-                     (data[i].Type == (ushort)PRINTERNOTIFICATIONTYPES.JOB_NOTIFY_TYPE)
-                    )
-                {
-                   JOBSTATUS jStatus  = (JOBSTATUS)Enum.Parse(typeof(JOBSTATUS), data[i].NotifyData.Data.cbBuf.ToString());
+                    (data[i].Type == (ushort)PRINTERNOTIFICATIONTYPES.JOB_NOTIFY_TYPE))
+                {                    
+                    JOBSTATUS jStatus  = (JOBSTATUS)Enum.Parse(typeof(JOBSTATUS), data[i].NotifyData.Data.cbBuf.ToString());
                     int intJobID = (int)data[i].Id;
                     string strJobName = ""; 
                     PrintSystemJobInfo pji = null;
@@ -207,9 +212,16 @@ namespace Monitors
                         objJobDict.TryGetValue(intJobID, out strJobName);
                         if (strJobName == null) strJobName = "";
                     }
-                    int pagesCount = (int)data[i].NotifyData.adwData[0];
+                    bool result;
+                    result = GetJob(_printerHandle, (uint)intJobID, 2, IntPtr.Zero, 0, out uint needed);
+                    IntPtr buffer = Marshal.AllocHGlobal((int)needed);
+                    result = GetJob(_printerHandle, (uint)intJobID, 2, buffer, needed, out needed);
+                    JOB_INFO_2 jobInfo = (JOB_INFO_2)Marshal.PtrToStructure(buffer, typeof(JOB_INFO_2));
+                    DEVMODE dMode = (DEVMODE)Marshal.PtrToStructure(jobInfo.pDevMode, typeof(DEVMODE));
+                    short shortJobCopies = dMode.dmCopies;
+                    Marshal.FreeHGlobal(buffer);
                     //Let us raise the event
-                    OnJobStatusChange?.Invoke(this, new PrintJobChangeEventArgs(intJobID, strJobName, jStatus, pji, pagesCount));
+                    OnJobStatusChange?.Invoke(this, new PrintJobChangeEventArgs(intJobID, strJobName, jStatus, pji, shortJobCopies));                    
                 }
             }
             #endregion

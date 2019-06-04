@@ -8,7 +8,7 @@
         Title="PrintOrders" 
         Topmost="True" WindowStartupLocation="CenterScreen" 
         ResizeMode="NoResize" SizeToContent="WidthAndHeight" 
-        Background="#FF0371B0" WindowStyle="None"
+        Background="#FF0371B0" WindowStyle="None" Icon="Images/printer.ico"
         FocusManager.FocusedElement="{Binding ElementName=okButton}">
     <Window.Resources>
         <Style TargetType="Button">
@@ -38,7 +38,7 @@
             <RowDefinition Height="120"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="80"/>
-            <RowDefinition Height="70"/>
+            <RowDefinition Height="140"/>
             <RowDefinition Height="50"/>
         </Grid.RowDefinitions>
         <Label x:Name="readyLabel" Grid.Row="0" Content="Ваш заказ в очереди! " FontSize="45"/>
@@ -47,11 +47,16 @@
         <Label x:Name="totalLabel" Grid.Row="3" Content="Итого: " FontSize="30"/>
         <Grid Grid.Row="4" Margin="35, 0" HorizontalAlignment="Center">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="320"/>
-                <ColumnDefinition Width="320"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
-            <Button x:Name="addButton" Grid.Column="0" Content="Печатать еще файл" Click="AddButton_Click"/>
-            <Button x:Name="okButton" Grid.Column="1" Content="Готово" Click="OkButton_Click" IsDefault="True"/>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Button x:Name="addButton" Grid.ColumnSpan="2" Width="Auto" Content="Печатать еще файл" Click="AddButton_Click"/>
+            <Button x:Name="cancelButton" Grid.Column="0" Grid.Row="1" Content="Отменить всё" Click="CancelButton_Click"/>
+            <Button x:Name="okButton" Grid.Column="1" Grid.Row="1" Content="Готово" Click="OkButton_Click" IsDefault="True"/>
         </Grid>
         <Label x:Name="infoLabel" Grid.Row="5" Content='Нажмите на кнопку "Готово", чтобы файлы отправились на печать' FontSize="20"/>
     </Grid>
