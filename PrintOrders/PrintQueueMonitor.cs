@@ -154,7 +154,7 @@ namespace Monitors
         }
         #endregion
 
-
+        private const int ERROR_INSUFFICIENT_BUFFER = 122;
         #region Callback Function
         public void PrinterNotifyWaitCallback(Object state,bool timedOut)
         {
@@ -213,13 +213,17 @@ namespace Monitors
                         if (strJobName == null) strJobName = "";
                     }
                     bool result;
+                    short shortJobCopies = 0;
                     result = GetJob(_printerHandle, (uint)intJobID, 2, IntPtr.Zero, 0, out uint needed);
-                    IntPtr buffer = Marshal.AllocHGlobal((int)needed);
-                    result = GetJob(_printerHandle, (uint)intJobID, 2, buffer, needed, out needed);
-                    JOB_INFO_2 jobInfo = (JOB_INFO_2)Marshal.PtrToStructure(buffer, typeof(JOB_INFO_2));
-                    DEVMODE dMode = (DEVMODE)Marshal.PtrToStructure(jobInfo.pDevMode, typeof(DEVMODE));
-                    short shortJobCopies = dMode.dmCopies;
-                    Marshal.FreeHGlobal(buffer);
+                    if (Marshal.GetLastWin32Error() == ERROR_INSUFFICIENT_BUFFER)
+                    {
+                        IntPtr buffer = Marshal.AllocHGlobal((int)needed);
+                        result = GetJob(_printerHandle, (uint)intJobID, 2, buffer, needed, out needed);
+                        JOB_INFO_2 jobInfo = (JOB_INFO_2)Marshal.PtrToStructure(buffer, typeof(JOB_INFO_2));
+                        DEVMODE dMode = (DEVMODE)Marshal.PtrToStructure(jobInfo.pDevMode, typeof(DEVMODE));
+                        shortJobCopies = dMode.dmCopies;
+                        Marshal.FreeHGlobal(buffer);
+                    }
                     //Let us raise the event
                     OnJobStatusChange?.Invoke(this, new PrintJobChangeEventArgs(intJobID, strJobName, jStatus, pji, shortJobCopies));                    
                 }
