@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "PrintOrders"
-#define MyAppVersion "3.0"
+#define MyAppVersion "3.2"
 #define MyAppPublisher "Ilia B."
 #define MyAppExeName "PrintOrders.exe"
 
@@ -28,6 +28,7 @@ Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 DisableWelcomePage=no
+AlwaysRestart=yes
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -44,11 +45,11 @@ Name: "{commonstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Office\11.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist
-Root: HKCU; Subkey: "Software\Microsoft\Office\12.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist
-Root: HKCU; Subkey: "Software\Microsoft\Office\14.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist
-Root: HKCU; Subkey: "Software\Microsoft\Office\15.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist
-Root: HKCU; Subkey: "Software\Microsoft\Office\16.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist
+Root: HKCU; Subkey: "Software\Microsoft\Office\11.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Office\12.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Office\14.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Office\15.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Office\16.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
 
 [Code]
 function IsAppRunning(const FileName: string): Boolean;

@@ -61,8 +61,8 @@ namespace PrintOrdersGUI
         }
         
         void pqm_OnJobStatusChange(object Sender, PrintJobChangeEventArgs e)
-        {     
-            Application.Current.Dispatcher.Invoke(() => BlockButtons());
+        {
+            Application.Current.Dispatcher.Invoke(() => BlockButtons());    
             if (e.JobStatus.HasFlag(PrintSpool.JOBSTATUS.JOB_STATUS_DELETING))
             {
                 if(pausedJobs.ContainsKey(e.JobID))
@@ -163,18 +163,16 @@ namespace PrintOrdersGUI
             {
                 pq.GetJob(job.Key).Resume();
             }
-
-            // объект для печати
+            
             PrintDocument printDocument = new PrintDocument
             {
                 DocumentName = "orderInfo"
             };
             string pages = totalPages.ToString();
-            // обработчик события печати
+
             printDocument.PrintPage += new PrintPageEventHandler(PrintPageHandler);
             printDocument.Print();
-
-            // обработчик события печати
+            
             void PrintPageHandler(object s, PrintPageEventArgs j)
             {
                 DirectoryInfo dir = Directory.CreateDirectory(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\PrintOrders\\");
@@ -201,11 +199,9 @@ namespace PrintOrdersGUI
                 }
 
                 string result = "";
-                // задаем текст для печати
                 result += "Дата: " + DateTime.Now.ToString() + "\n";
                 result += "Номер заказа: " + orderId + "\n";
                 result += "Количество страниц: " + pages;
-                // печать строки result
                 j.Graphics.DrawString(result, new Font("Arial", 14), System.Drawing.Brushes.Black, 0, 0);
             }                      
                         

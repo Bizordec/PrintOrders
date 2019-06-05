@@ -17,14 +17,16 @@ namespace Monitors
         public string JobName { get; } = "";
         public JOBSTATUS JobStatus { get; } = new JOBSTATUS();
         public PrintSystemJobInfo JobInfo { get; } = null;
+        public uint JobTotalPages { get; set; } = 0;
         public short JobCopies { get; set; } = 0;
-        public PrintJobChangeEventArgs(int intJobID, string strJobName, JOBSTATUS jStatus, PrintSystemJobInfo objJobInfo, short shortJobCopies)
+        public PrintJobChangeEventArgs(int intJobID, string strJobName, JOBSTATUS jStatus, PrintSystemJobInfo objJobInfo, uint uintJobTotalPages, short shortJobCopies)
             : base()
         {
             JobID = intJobID;
             JobName = strJobName;
             JobStatus = jStatus;
             JobInfo = objJobInfo;
+            JobTotalPages = uintJobTotalPages;
             JobCopies = shortJobCopies;
         }
     }
@@ -214,6 +216,7 @@ namespace Monitors
                     }
                     bool result;
                     short shortJobCopies = 0;
+                    uint uintJobTotalPages = 0;
                     result = GetJob(_printerHandle, (uint)intJobID, 2, IntPtr.Zero, 0, out uint needed);
                     if (Marshal.GetLastWin32Error() == ERROR_INSUFFICIENT_BUFFER)
                     {
@@ -222,10 +225,11 @@ namespace Monitors
                         JOB_INFO_2 jobInfo = (JOB_INFO_2)Marshal.PtrToStructure(buffer, typeof(JOB_INFO_2));
                         DEVMODE dMode = (DEVMODE)Marshal.PtrToStructure(jobInfo.pDevMode, typeof(DEVMODE));
                         shortJobCopies = dMode.dmCopies;
+                        uintJobTotalPages = jobInfo.TotalPages;
                         Marshal.FreeHGlobal(buffer);
                     }
                     //Let us raise the event
-                    OnJobStatusChange?.Invoke(this, new PrintJobChangeEventArgs(intJobID, strJobName, jStatus, pji, shortJobCopies));                    
+                    OnJobStatusChange?.Invoke(this, new PrintJobChangeEventArgs(intJobID, strJobName, jStatus, pji, uintJobTotalPages, shortJobCopies));                    
                 }
             }
             #endregion
