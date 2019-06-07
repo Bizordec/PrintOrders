@@ -1,20 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 using System.Printing;
-using System.Timers;
 using Microsoft.Win32;
 using System.Windows.Threading;
 using System.IO;
@@ -26,7 +14,6 @@ using System.Net.Sockets;
 using System.Data;
 using Monitors;
 using System.Diagnostics;
-using System.Management;
 
 namespace PrintOrdersGUI
 {
@@ -35,13 +22,15 @@ namespace PrintOrdersGUI
     /// </summary>
     public partial class MainWindow : Window
     {
+        private static Mutex m = null;
+        private Dispatcher dispatcher = null;
         private PrintQueueMonitor pqm = null;
-        private int counter = 0;
+        private int idCounter = 0;
         private SortedDictionary<int, JobPagesInfo> pausedJobs = null;
         private bool orderIsCreated = false;
         private int totalPages = 0;
         private string orderId = "";
-        private static Mutex m;
+        private System.Windows.Forms.NotifyIcon notifyIcon = null;
 
         public MainWindow()
         {
@@ -51,60 +40,73 @@ namespace PrintOrdersGUI
                 MessageBox.Show("PrintOrders.exe уже запущен!", "Внимание!", MessageBoxButton.OK, MessageBoxImage.Warning);
                 Close();
             }
+
             InitializeComponent();
             Hide();
-            MidnightNotifier.DayChanged += (s, e) => { counter = 0; };
+
+            notifyIcon = new System.Windows.Forms.NotifyIcon
+            {
+                Icon = PrintOrders.Properties.Resources.printer,
+                Visible = true,
+                Text = "PrintOrders\nРаботает"
+            };
+
+            dispatcher = Application.Current.Dispatcher;
+            MidnightNotifier.DayChanged += (s, e) => { idCounter = 0; };
             pausedJobs = new SortedDictionary<int, JobPagesInfo>();
+
             PrinterSettings settings = new PrinterSettings();
             pqm = new PrintQueueMonitor(settings.PrinterName);
-            pqm.OnJobStatusChange += new PrintJobStatusChanged(pqm_OnJobStatusChange);
+            pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
         }
         
-        void pqm_OnJobStatusChange(object Sender, PrintJobChangeEventArgs e)
+        void Pqm_OnJobStatusChange(object Sender, PrintJobChangeEventArgs e)
         {
-            Application.Current.Dispatcher.Invoke(() => BlockButtons());    
+            if (e.JobName == "orderInfo")
+                return;
+            dispatcher.Invoke(() => BlockButtons());
             if (e.JobStatus.HasFlag(PrintSpool.JOBSTATUS.JOB_STATUS_DELETING))
             {
-                if(pausedJobs.ContainsKey(e.JobID))
+                if (pausedJobs.ContainsKey(e.JobID))
                 {
                     totalPages -= pausedJobs[e.JobID].TotalPages;
                     pausedJobs.Remove(e.JobID);
-                    Application.Current.Dispatcher.Invoke(() => UpdateFilesList());                    
+                    if (orderIsCreated)
+                        dispatcher.Invoke(() => UpdateFilesList());
                 }
-                Application.Current.Dispatcher.Invoke(() => UnblockButtons());
+                dispatcher.Invoke(() => UnblockButtons());
                 PrintJobInfoCollection pjic = LocalPrintServer.GetDefaultPrintQueue().GetPrintJobInfoCollection();
                 if (orderIsCreated && (!pausedJobs.Any() || !pjic.Any()))
                 {
                     orderIsCreated = false;
                     pausedJobs.Clear();
                     totalPages = 0;
-                    Application.Current.Dispatcher.Invoke(() => Hide());
-                    return;
+                    dispatcher.Invoke(() => Hide());
                 }
                 return;
             }
-            Application.Current.Dispatcher.Invoke(() => UnblockButtons());
-            if (e.JobStatus != 0 || e.JobName == "orderInfo" || e.JobInfo == null)
-                return;
-            if (pausedJobs.ContainsKey(e.JobID))
+            if (e.JobStatus.HasFlag(PrintSpool.JOBSTATUS.JOB_STATUS_PAUSED) || e.JobInfo == null)
             {
-                pausedJobs.Remove(e.JobID);
+                dispatcher.Invoke(() => UnblockButtons());
                 return;
-            }            
-            e.JobInfo.Pause();
-            
-            JobPagesInfo job = new JobPagesInfo(e.JobInfo.NumberOfPages, e.JobCopies);
-            pausedJobs.Add(e.JobID, job);
-            totalPages += job.TotalPages;
-            if (!orderIsCreated)
-            {
-                orderIsCreated = true;                
-                Application.Current.Dispatcher.Invoke(() => CreateOrder());
             }
-            else
+            if (!e.JobStatus.HasFlag(PrintSpool.JOBSTATUS.JOB_STATUS_SPOOLING) && !pausedJobs.ContainsKey(e.JobID))
             {
-                Application.Current.Dispatcher.Invoke(() => UpdateFilesList());
-            }      
+                e.JobInfo.Pause();
+                JobPagesInfo job = new JobPagesInfo(e.JobInfo.NumberOfPages, e.JobCopies);
+                pausedJobs.Add(e.JobID, job);
+                totalPages += job.TotalPages;
+                if (!orderIsCreated)
+                {
+                    orderIsCreated = true;
+                    dispatcher.Invoke(() => CreateOrder());
+                }
+                else
+                {
+                    dispatcher.Invoke(() => UpdateFilesList());
+                }
+            }
+            dispatcher.Invoke(() => UnblockButtons());
         }
 
         private void CreateOrder()
@@ -120,7 +122,7 @@ namespace PrintOrdersGUI
             char ipLetter = alphabet[(lastpart + alphabet.Length) % alphabet.Length];
             char randLetter = alphabet[rng.Next(alphabet.Length)];
             string letters = ipLetter.ToString() + randLetter.ToString();
-            orderId = letters + "-" + lastpart.ToString() + counter++.ToString();
+            orderId = letters + "-" + lastpart.ToString() + idCounter++.ToString();
             orderLabel.Content = "Номер: " + orderId;
             UpdateFilesList();
         }
@@ -202,11 +204,9 @@ namespace PrintOrdersGUI
                 result += "Дата: " + DateTime.Now.ToString() + "\n";
                 result += "Номер заказа: " + orderId + "\n";
                 result += "Количество страниц: " + pages;
-                j.Graphics.DrawString(result, new Font("Arial", 14), System.Drawing.Brushes.Black, 0, 0);
-            }                      
-                        
+                j.Graphics.DrawString(result, new Font("Arial", 14), System.Drawing.Brushes.Black, 30, 30);
+            }
             Hide();
-            totalPages = 0;
             orderIsCreated = false;
         }
 
@@ -269,6 +269,6 @@ namespace PrintOrdersGUI
                 Copies = copies;
                 TotalPages = pages * copies;
             }
-        }
+        }        
     }
 }
