@@ -25,6 +25,7 @@ namespace PrintOrdersGUI
     {
         private static Mutex m = null;
         private Dispatcher dispatcher = null;
+        private PrintQueue pq = null;
         private PrintQueueMonitor pqm = null;
         private int IdCounter
         {
@@ -56,7 +57,8 @@ namespace PrintOrdersGUI
             m = new Mutex(true, Process.GetCurrentProcess().ProcessName, out bool first);
             if (!first)
             {
-                MessageBox.Show("PrintOrders.exe уже запущен!", "Внимание!", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("PrintOrders.exe уже запущен!", "Внимание!", 
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 Close();
             }
 
@@ -70,7 +72,6 @@ namespace PrintOrdersGUI
             };
             System.Windows.Forms.ContextMenu niContextMenu = new System.Windows.Forms.ContextMenu();
             niContextMenu.MenuItems.Add("Выход", new EventHandler(Exit));
-
             notifyIcon.ContextMenu = niContextMenu;
 
             rk = Registry.CurrentUser.OpenSubKey(@"Software\PrintOrders", true) ?? 
@@ -94,17 +95,16 @@ namespace PrintOrdersGUI
             pausedJobs = new SortedDictionary<int, JobPagesInfo>();
             rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
 
-            PrinterSettings settings = new PrinterSettings();
-            notifyIcon.Text = "PrintOrders\nРаботает (" + settings.PrinterName + ")";
-            pqm = new PrintQueueMonitor(settings.PrinterName);
+            pq = LocalPrintServer.GetDefaultPrintQueue();
+            notifyIcon.Text = "PrintOrders\nРаботает (" + pq.Name + ")";
+            pqm = new PrintQueueMonitor(pq.Name);
             pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
         }
         
         void Pqm_OnJobStatusChange(object Sender, PrintJobChangeEventArgs e)
         {
             if (e.JobName == "orderInfo")
-                return;
-
+                return;            
             dispatcher.BeginInvoke(new Action(delegate { BlockButtons(); }));
 
             if ((e.JobStatus & JOBSTATUS.JOB_STATUS_DELETING) == JOBSTATUS.JOB_STATUS_DELETING)
@@ -195,7 +195,6 @@ namespace PrintOrdersGUI
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
-            PrintQueue pq = LocalPrintServer.GetDefaultPrintQueue();
             foreach (KeyValuePair<int, JobPagesInfo> job in pausedJobs)
             {
                 pq.GetJob(job.Key).Cancel();
@@ -205,7 +204,6 @@ namespace PrintOrdersGUI
 
         private void OkButton_Click(object sender, RoutedEventArgs e)
         {
-            PrintQueue pq = LocalPrintServer.GetDefaultPrintQueue();
             foreach(KeyValuePair<int, JobPagesInfo> job in pausedJobs)
             {
                 pq.GetJob(job.Key).Resume();
