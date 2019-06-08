@@ -2,15 +2,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Printing;
-using System.Text;
 using System.Runtime.InteropServices;
 using System.Threading;
 using PrintSpool;
 
-
-namespace Monitors
+namespace PQM
 {
-
     public class PrintJobChangeEventArgs : EventArgs
     {
         public int JobID { get; } = 0;

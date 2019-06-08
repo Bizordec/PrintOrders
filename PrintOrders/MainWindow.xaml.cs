@@ -12,8 +12,9 @@ using System.Drawing;
 using System.Net;
 using System.Net.Sockets;
 using System.Data;
-using Monitors;
 using System.Diagnostics;
+using PQM;
+using PrintSpool;
 
 namespace PrintOrdersGUI
 {
@@ -66,10 +67,14 @@ namespace PrintOrdersGUI
             {
                 Icon = PrintOrders.Properties.Resources.printer,
                 Visible = true,
-                Text = "PrintOrders\nРаботает"
             };
+            System.Windows.Forms.ContextMenu niContextMenu = new System.Windows.Forms.ContextMenu();
+            niContextMenu.MenuItems.Add("Выход", new EventHandler(Exit));
 
-            rk = Registry.CurrentUser.OpenSubKey("Software").OpenSubKey("PrintOrders", true);
+            notifyIcon.ContextMenu = niContextMenu;
+
+            rk = Registry.CurrentUser.OpenSubKey(@"Software\PrintOrders", true) ?? 
+                Registry.CurrentUser.CreateSubKey(@"Software\PrintOrders");
             try
             {
                 if (DateTime.Now.ToShortDateString() != rk.GetValue("dateOnShutdown").ToString())
@@ -81,10 +86,16 @@ namespace PrintOrdersGUI
             }
             
             dispatcher = Application.Current.Dispatcher;
-            MidnightNotifier.DayChanged += (s, e) => { IdCounter = 0; };
+            MidnightNotifier.DayChanged += (s, e) => 
+            {
+                IdCounter = 0;
+                rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
+            };
             pausedJobs = new SortedDictionary<int, JobPagesInfo>();
             rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
+
             PrinterSettings settings = new PrinterSettings();
+            notifyIcon.Text = "PrintOrders\nРаботает (" + settings.PrinterName + ")";
             pqm = new PrintQueueMonitor(settings.PrinterName);
             pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
         }
@@ -93,33 +104,37 @@ namespace PrintOrdersGUI
         {
             if (e.JobName == "orderInfo")
                 return;
-            dispatcher.Invoke(() => BlockButtons());
-            if (e.JobStatus.HasFlag(PrintSpool.JOBSTATUS.JOB_STATUS_DELETING))
+
+            dispatcher.BeginInvoke(new Action(delegate { BlockButtons(); }));
+
+            if ((e.JobStatus & JOBSTATUS.JOB_STATUS_DELETING) == JOBSTATUS.JOB_STATUS_DELETING)
             {
                 if (pausedJobs.ContainsKey(e.JobID))
                 {
                     totalPages -= pausedJobs[e.JobID].TotalPages;
                     pausedJobs.Remove(e.JobID);
                     if (orderIsCreated)
-                        dispatcher.Invoke(() => UpdateFilesList());
+                        dispatcher.BeginInvoke(new Action(delegate { UpdateFilesList(); }));
                 }
-                dispatcher.Invoke(() => UnblockButtons());
+                dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
                 PrintJobInfoCollection pjic = LocalPrintServer.GetDefaultPrintQueue().GetPrintJobInfoCollection();
                 if (orderIsCreated && (!pausedJobs.Any() || !pjic.Any()))
                 {
                     orderIsCreated = false;
                     pausedJobs.Clear();
                     totalPages = 0;
-                    dispatcher.Invoke(() => Hide());
+                    dispatcher.BeginInvoke(new Action(delegate { Hide(); }));
                 }
                 return;
             }
-            if (e.JobStatus.HasFlag(PrintSpool.JOBSTATUS.JOB_STATUS_PAUSED) || e.JobInfo == null)
+            if((e.JobStatus & JOBSTATUS.JOB_STATUS_PAUSED) == JOBSTATUS.JOB_STATUS_PAUSED || 
+                e.JobInfo == null)
             {
-                dispatcher.Invoke(() => UnblockButtons());
+                dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
                 return;
             }
-            if (!e.JobStatus.HasFlag(PrintSpool.JOBSTATUS.JOB_STATUS_SPOOLING) && !pausedJobs.ContainsKey(e.JobID))
+            if ((e.JobStatus & JOBSTATUS.JOB_STATUS_SPOOLING) != JOBSTATUS.JOB_STATUS_SPOOLING && 
+                !pausedJobs.ContainsKey(e.JobID))
             {
                 e.JobInfo.Pause();
                 JobPagesInfo job = new JobPagesInfo(e.JobInfo.NumberOfPages, e.JobCopies);
@@ -128,14 +143,14 @@ namespace PrintOrdersGUI
                 if (!orderIsCreated)
                 {
                     orderIsCreated = true;
-                    dispatcher.Invoke(() => CreateOrder());
+                    dispatcher.BeginInvoke(new Action(delegate { CreateOrder(); }));
                 }
                 else
                 {
-                    dispatcher.Invoke(() => UpdateFilesList());
+                    dispatcher.BeginInvoke(new Action(delegate { UpdateFilesList(); }));
                 }
             }
-            dispatcher.Invoke(() => UnblockButtons());
+            dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
         }
 
         private void CreateOrder()
@@ -243,9 +258,20 @@ namespace PrintOrdersGUI
             orderIsCreated = false;
         }
 
+        private void Exit(object sender, EventArgs e)
+        {
+            Close();       
+        }
+
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
+            notifyIcon.Visible = false;
             rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
+        }
+
+        private void Window_ContentRendered(object sender, EventArgs e)
+        {
+            Activate();
         }
 
         private void BlockButtons()

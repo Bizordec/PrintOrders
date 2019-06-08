@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "PrintOrders"
-#define MyAppVersion "3.2"
+#define MyAppVersion "3.3"
 #define MyAppPublisher "Ilia B."
 #define MyAppExeName "PrintOrders.exe"
 
@@ -15,7 +15,8 @@ AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
-DisableProgramGroupPage=yes
+DefaultGroupName={#MyAppName}
+DisableProgramGroupPage=no
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 OutputDir=.
 OutputBaseFilename=PrintOrders-{#MyAppVersion}_setup
@@ -29,20 +30,20 @@ SolidCompression=yes
 WizardStyle=modern
 DisableWelcomePage=no
 AlwaysRestart=yes
+AllowNoIcons=yes
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Files]
-Source: "D:\Mirea_stuff\PrintJobs\PrintOrders\PrintOrders\bin\x86\Release\PrintOrders.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "PrintOrders\bin\Release\PrintOrders.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{commonstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-
-[Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
+Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Office\11.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
@@ -50,7 +51,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Office\12.0\Word\Options"; ValueType: dw
 Root: HKCU; Subkey: "Software\Microsoft\Office\14.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\Office\15.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\Office\16.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
-Root: HKCU; Subkey: "Software\PrintOrders"; Flags: createvalueifdoesntexist uninsdeletevalue
+Root: HKCU; Subkey: "Software\PrintOrders"; Flags: uninsdeletekey
 
 [Code]
 function IsAppRunning(const FileName: string): Boolean;
