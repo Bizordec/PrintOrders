@@ -9,7 +9,7 @@
         Topmost="True" WindowStartupLocation="CenterScreen" 
         ResizeMode="NoResize" SizeToContent="WidthAndHeight" 
         Background="#FF0371B0" WindowStyle="None" Icon="printer.ico"
-        FocusManager.FocusedElement="{Binding ElementName=okButton}">
+        FocusManager.FocusedElement="{Binding ElementName=okButton}" Closing="Window_Closing">
     <Window.Resources>
         <Style TargetType="Button">
             <Style.Triggers>

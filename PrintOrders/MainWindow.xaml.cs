@@ -25,12 +25,30 @@ namespace PrintOrdersGUI
         private static Mutex m = null;
         private Dispatcher dispatcher = null;
         private PrintQueueMonitor pqm = null;
-        private int idCounter = 0;
+        private int IdCounter
+        {
+            get => (int)rk.GetValue("idCounter", 0);
+            set => rk.SetValue("idCounter", value);
+        }
         private SortedDictionary<int, JobPagesInfo> pausedJobs = null;
         private bool orderIsCreated = false;
         private int totalPages = 0;
         private string orderId = "";
         private System.Windows.Forms.NotifyIcon notifyIcon = null;
+        private RegistryKey rk = null;
+
+        public class JobPagesInfo
+        {
+            public int Pages { get; private set; }
+            public int Copies { get; private set; }
+            public int TotalPages { get; private set; }
+            public JobPagesInfo(int pages, short copies)
+            {
+                Pages = pages;
+                Copies = copies;
+                TotalPages = pages * copies;
+            }
+        }
 
         public MainWindow()
         {
@@ -51,10 +69,21 @@ namespace PrintOrdersGUI
                 Text = "PrintOrders\nРаботает"
             };
 
+            rk = Registry.CurrentUser.OpenSubKey("Software").OpenSubKey("PrintOrders", true);
+            try
+            {
+                if (DateTime.Now.ToShortDateString() != rk.GetValue("dateOnShutdown").ToString())
+                    IdCounter = 0;
+            }
+            catch
+            {
+                rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
+            }
+            
             dispatcher = Application.Current.Dispatcher;
-            MidnightNotifier.DayChanged += (s, e) => { idCounter = 0; };
+            MidnightNotifier.DayChanged += (s, e) => { IdCounter = 0; };
             pausedJobs = new SortedDictionary<int, JobPagesInfo>();
-
+            rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
             PrinterSettings settings = new PrinterSettings();
             pqm = new PrintQueueMonitor(settings.PrinterName);
             pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
@@ -122,7 +151,7 @@ namespace PrintOrdersGUI
             char ipLetter = alphabet[(lastpart + alphabet.Length) % alphabet.Length];
             char randLetter = alphabet[rng.Next(alphabet.Length)];
             string letters = ipLetter.ToString() + randLetter.ToString();
-            orderId = letters + "-" + lastpart.ToString() + idCounter++.ToString();
+            orderId = letters + "-" + lastpart.ToString() + IdCounter++.ToString();
             orderLabel.Content = "Номер: " + orderId;
             UpdateFilesList();
         }
@@ -133,8 +162,9 @@ namespace PrintOrdersGUI
             pagesLabel.Text = "";
             foreach (KeyValuePair<int, JobPagesInfo> job in pausedJobs)
             {
+                JobPagesInfo jobInfo = job.Value;
                 pagesLabel.Text += "\r\n" + fileCount++ + "-й файл: ";
-                pagesLabel.Text += job.Value.Pages != 0 ? job.Value.Pages + " стр.\t(копий: " + job.Value.Copies + ")" : "Н/Д";
+                pagesLabel.Text += jobInfo.Pages != 0 ? jobInfo.Pages + " стр.\t(копий: " + jobInfo.Copies + ")" : "Н/Д";
             }
             totalLabel.Content = "Итого: " + totalPages + " стр.";
             if (!IsVisible)
@@ -177,9 +207,12 @@ namespace PrintOrdersGUI
             
             void PrintPageHandler(object s, PrintPageEventArgs j)
             {
-                DirectoryInfo dir = Directory.CreateDirectory(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\PrintOrders\\");
-                string path = dir.FullName + "\\orders_info_" + DateTime.Now.ToShortDateString() + ".txt";
-                FileInfo fi1 = new FileInfo(path);
+                string infoDirPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\PrintOrders\\";
+                if(!Directory.Exists(infoDirPath))
+                    Directory.CreateDirectory(infoDirPath);
+
+                string infoFilePath = infoDirPath + "\\orders_info_" + DateTime.Now.ToShortDateString() + ".txt";
+                FileInfo fi1 = new FileInfo(infoFilePath);
                 string row = DateTime.Now.ToShortDateString() + "\t" +
                     DateTime.Now.ToShortTimeString() + "\t" +
                     orderId + "\t\t" +
@@ -194,7 +227,7 @@ namespace PrintOrdersGUI
                 }
                 else
                 {
-                    using (StreamWriter sw = File.AppendText(path))
+                    using (StreamWriter sw = File.AppendText(infoFilePath))
                     {
                         sw.WriteLine(row);
                     }
@@ -204,10 +237,15 @@ namespace PrintOrdersGUI
                 result += "Дата: " + DateTime.Now.ToString() + "\n";
                 result += "Номер заказа: " + orderId + "\n";
                 result += "Количество страниц: " + pages;
-                j.Graphics.DrawString(result, new Font("Arial", 14), System.Drawing.Brushes.Black, 30, 30);
+                j.Graphics.DrawString(result, new Font("Arial", 14), Brushes.Black, 30, 30);
             }
             Hide();
             orderIsCreated = false;
+        }
+
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
         }
 
         private void BlockButtons()
@@ -255,19 +293,6 @@ namespace PrintOrdersGUI
             private static void OnSystemTimeChanged(object sender, EventArgs e)
             {
                 timer.Interval = GetSleepTime();
-            }
-        }
-
-        public class JobPagesInfo
-        {
-            public int Pages { get; private set; }
-            public int Copies { get; private set; }
-            public int TotalPages { get; private set; }
-            public JobPagesInfo(int pages, short copies)
-            {
-                Pages = pages;
-                Copies = copies;
-                TotalPages = pages * copies;
             }
         }        
     }

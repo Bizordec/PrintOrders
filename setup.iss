@@ -50,6 +50,7 @@ Root: HKCU; Subkey: "Software\Microsoft\Office\12.0\Word\Options"; ValueType: dw
 Root: HKCU; Subkey: "Software\Microsoft\Office\14.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\Office\15.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
 Root: HKCU; Subkey: "Software\Microsoft\Office\16.0\Word\Options"; ValueType: dword; ValueName: "ForceSetCopyCount"; ValueData: "1"; Flags: createvalueifdoesntexist uninsdeletevalue
+Root: HKCU; Subkey: "Software\PrintOrders"; Flags: createvalueifdoesntexist uninsdeletevalue
 
 [Code]
 function IsAppRunning(const FileName: string): Boolean;
