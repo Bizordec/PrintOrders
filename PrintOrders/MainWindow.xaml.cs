@@ -264,7 +264,10 @@ namespace PrintOrdersGUI
             }
             totalLabel.Content = "Итого: " + totalPages + " стр.";
             if (!IsVisible)
+            {
                 Show();
+                Activate();
+            }
             if(WindowState == WindowState.Minimized)
                 WindowState = WindowState.Normal;
         }
