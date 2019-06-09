@@ -54,6 +54,7 @@ namespace PrintOrdersGUI
 
         public MainWindow()
         {
+            // Запрещаем запускаться программе, если уже есть запущенный процесс.
             m = new Mutex(true, Process.GetCurrentProcess().ProcessName, out bool first);
             if (!first)
             {
@@ -63,8 +64,11 @@ namespace PrintOrdersGUI
             }
 
             InitializeComponent();
+
+            // Окно появляется только при созданном заказе, поэтому изначально оно скрыто.
             Hide();
 
+            // Добавляем иконку в область уведомлений с возможностью выхода из программы.
             notifyIcon = new System.Windows.Forms.NotifyIcon
             {
                 Icon = PrintOrders.Properties.Resources.printer,
@@ -74,19 +78,43 @@ namespace PrintOrdersGUI
             niContextMenu.MenuItems.Add("Выход", new EventHandler(Exit));
             notifyIcon.ContextMenu = niContextMenu;
 
+            /*
+             * Получаем из реестра подраздел HKEY_CURRENT_USER\Software\PrintOrders.
+             * Если его не существует, то создаем новый.
+             */
             rk = Registry.CurrentUser.OpenSubKey(@"Software\PrintOrders", true) ?? 
                 Registry.CurrentUser.CreateSubKey(@"Software\PrintOrders");
             try
             {
+                /*
+                 * Если полученный из реестра день не будет совпадать с текущим днем, 
+                 * то счетчик для номера заказа сбрасывается.
+                 * Это может произойти, если включить компьютер на следующий день после выключения.
+                 */
                 if (DateTime.Now.ToShortDateString() != rk.GetValue("dateOnShutdown").ToString())
                     IdCounter = 0;
             }
             catch
             {
+                /*
+                 * Если в реестре не было найдено значение dateOnShutdown, 
+                 * то создается новое значение с текущей датой.
+                 * Происходит во время самого первого запуска программы.
+                 */
                 rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
             }
-            
+
+            /* 
+             * Создаем диспетчер данного окна, 
+             * чтобы с ним можно было взаимодействовать из обработчика заданий печати.
+             */
             dispatcher = Application.Current.Dispatcher;
+
+            /*
+             * Создаем обработчик смены дня.
+             * Как только наступает новый день, 
+             * обработчик сбрасывается и в реестре обновляется значение dateOnShutdown.
+             */
             MidnightNotifier.DayChanged += (s, e) => 
             {
                 IdCounter = 0;
@@ -95,20 +123,43 @@ namespace PrintOrdersGUI
             pausedJobs = new SortedDictionary<int, JobPagesInfo>();
             rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
 
+            /*
+             * Получаем ссылку на очередь печати по умолчанию,
+             * инициализируем монитор печати и обработчик заданий печати.
+             */
             pq = LocalPrintServer.GetDefaultPrintQueue();
-            notifyIcon.Text = "PrintOrders\nРаботает (" + pq.Name + ")";
             pqm = new PrintQueueMonitor(pq.Name);
             pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
+
+            notifyIcon.Text = "PrintOrders\nРаботает (" + pq.Name + ")";
         }
         
+
+        /*
+         * Обработчик заданий печати.
+         * В переменной e хранится информация о задании 
+         * (идентификатор, имя, кол-во страниц (учитывая копии), кол-во копий, статус, объект PrintSystemJobInfo).
+         */
         void Pqm_OnJobStatusChange(object Sender, PrintJobChangeEventArgs e)
         {
+            /* 
+             * Если последнее задание - это финальный файл orderInfo, 
+             * то мы его пропускаем.
+             */
             if (e.JobName == "orderInfo")
-                return;            
+                return;
+
+            // Блокируем кнопки окна, пока задание обрабатывается.
             dispatcher.BeginInvoke(new Action(delegate { BlockButtons(); }));
 
+            // Обработка удаляемого задания.
             if ((e.JobStatus & JOBSTATUS.JOB_STATUS_DELETING) == JOBSTATUS.JOB_STATUS_DELETING)
             {
+                /*
+                 * Отнимаем кол-во страниц задания от общего кол-ва и
+                 * удаляем задание из списка приостановленных заданий.
+                 * Разблокируем кнопки окна.
+                 */
                 if (pausedJobs.ContainsKey(e.JobID))
                 {
                     totalPages -= pausedJobs[e.JobID].TotalPages;
@@ -117,6 +168,11 @@ namespace PrintOrdersGUI
                         dispatcher.BeginInvoke(new Action(delegate { UpdateFilesList(); }));
                 }
                 dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
+
+                /*
+                 * В случае, если общий список или список приостановленных заданий пуст,
+                 * сбрасываем значения и скрываем окно.
+                 */
                 PrintJobInfoCollection pjic = LocalPrintServer.GetDefaultPrintQueue().GetPrintJobInfoCollection();
                 if (orderIsCreated && (!pausedJobs.Any() || !pjic.Any()))
                 {
@@ -127,12 +183,21 @@ namespace PrintOrdersGUI
                 }
                 return;
             }
+
+            // Пропускаем задание, если его статус - "приостановлен"
             if((e.JobStatus & JOBSTATUS.JOB_STATUS_PAUSED) == JOBSTATUS.JOB_STATUS_PAUSED || 
                 e.JobInfo == null)
             {
                 dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
                 return;
             }
+
+            /*
+             * Когда задание подсчитает страницы (задание перестанет "спулить"),
+             * оно приостановится, добавится в список приостановленных заданий,
+             * кол-во его страниц добавится к общему кол-ву,
+             * и список файлов в окне приложения обновится.
+             */
             if ((e.JobStatus & JOBSTATUS.JOB_STATUS_SPOOLING) != JOBSTATUS.JOB_STATUS_SPOOLING && 
                 !pausedJobs.ContainsKey(e.JobID))
             {
@@ -140,6 +205,11 @@ namespace PrintOrdersGUI
                 JobPagesInfo job = new JobPagesInfo(e.JobInfo.NumberOfPages, e.JobCopies);
                 pausedJobs.Add(e.JobID, job);
                 totalPages += job.TotalPages;
+
+                /* 
+                 * В случае поступления первого задания, 
+                 * создается новый заказ.
+                 */
                 if (!orderIsCreated)
                 {
                     orderIsCreated = true;
@@ -153,6 +223,12 @@ namespace PrintOrdersGUI
             dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
         }
 
+        /*
+         * Создание нового заказа.
+         * Номер заказа создается по принципу
+         * <буква, полученная из IP-адреса компьютера><случайная буква>-<последний октет IP-адреса><счетчик из реестра>
+         * После этого обновляется список файлов.
+         */
         private void CreateOrder()
         {
             pagesLabel.Text = "";
@@ -171,6 +247,11 @@ namespace PrintOrdersGUI
             UpdateFilesList();
         }
 
+        /*
+         * Обновление списка файлов в окне.
+         * После вывода всей информации,
+         * показывается окно если оно было скрыто или свернуто.
+         */
         private void UpdateFilesList()
         {
             int fileCount = 1;
@@ -188,11 +269,19 @@ namespace PrintOrdersGUI
                 WindowState = WindowState.Normal;
         }
 
+        /* 
+         * При нажатии на кнопку "Печатать еще файл", 
+         * окно сворачивается.
+         */
         private void AddButton_Click(object sender, RoutedEventArgs e)
         {
             WindowState = WindowState.Minimized;
         }
 
+        /* 
+         * При нажатии на кнопку "Отменить все", 
+         * все задания из списка приостановленных заданий отменяются.
+         */
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
             foreach (KeyValuePair<int, JobPagesInfo> job in pausedJobs)
@@ -202,6 +291,15 @@ namespace PrintOrdersGUI
             pausedJobs.Clear();
         }
 
+        /*
+         * При нажатии на кнопку "Готово", 
+         * все задания из списка приостановленных заданий возобнавляются,
+         * в папку C:\Users\<Username>\Documents\PrintOrders и
+         * в очередь добавляются соответственно файлы 
+         * orders_info_<дата> и orderInfo с информацией о задании
+         * (дата, время, номер заказа, кол-во страниц),
+         * и окно скрывается.
+         */
         private void OkButton_Click(object sender, RoutedEventArgs e)
         {
             foreach(KeyValuePair<int, JobPagesInfo> job in pausedJobs)
@@ -256,34 +354,42 @@ namespace PrintOrdersGUI
             orderIsCreated = false;
         }
 
+        /* 
+         * Закрытие приложения при нажатии на кнопку "Выход" 
+         * в контекстном меню у иконки в трее.
+         */
         private void Exit(object sender, EventArgs e)
         {
             Close();       
         }
 
+        /*
+         * При закрытии окна, иконка скрывается и 
+         * в реестр записывается текущая дата.
+         */
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             notifyIcon.Visible = false;
             rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
         }
 
-        private void Window_ContentRendered(object sender, EventArgs e)
-        {
-            Activate();
-        }
-
+        // Блокировка кнопок.
         private void BlockButtons()
-        {
-            okButton.IsEnabled = false;
+        {            
             addButton.IsEnabled = false;
+            cancelButton.IsEnabled = false;
+            okButton.IsEnabled = false;
         }
 
+        // Разблокировка кнопок.
         private void UnblockButtons()
-        {
-            okButton.IsEnabled = true;
+        {            
             addButton.IsEnabled = true;
+            cancelButton.IsEnabled = true;
+            okButton.IsEnabled = true;
         }
 
+        // Обработка смены дня.
         static class MidnightNotifier
         {
             private static readonly System.Timers.Timer timer;
