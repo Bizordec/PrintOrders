@@ -15,6 +15,7 @@ using System.Data;
 using System.Diagnostics;
 using PQM;
 using PrintSpool;
+using System.Management;
 
 namespace PrintOrdersGUI
 {
@@ -26,13 +27,15 @@ namespace PrintOrdersGUI
         private static Mutex m = null;
         private Dispatcher dispatcher = null;
         private PrintQueue pq = null;
+        private string printerName = "";
+        private bool currentPrinterStatus = false;
         private PrintQueueMonitor pqm = null;
         private int IdCounter
         {
             get => (int)rk.GetValue("idCounter", 0);
             set => rk.SetValue("idCounter", value);
         }
-        private SortedDictionary<int, JobPagesInfo> pausedJobs = null;
+        private SortedDictionary<int, JobPagesInfo> pausedJobs = null;        
         private bool orderIsCreated = false;
         private int totalPages = 0;
         private string orderId = "";
@@ -91,21 +94,21 @@ namespace PrintOrdersGUI
                  * то счетчик для номера заказа сбрасывается.
                  * Это может произойти, если включить компьютер на следующий день после выключения.
                  */
-                if (DateTime.Now.ToShortDateString() != rk.GetValue("dateOnShutdown").ToString())
+                if (DateTime.Now.ToShortDateString() != rk.GetValue("lastDate").ToString())
                     IdCounter = 0;
             }
             catch
             {
                 /*
-                 * Если в реестре не было найдено значение dateOnShutdown, 
+                 * Если в реестре не было найдено значение lastDate, 
                  * то создается новое значение с текущей датой.
                  * Происходит во время самого первого запуска программы.
                  */
-                rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
+                rk.SetValue("lastDate", DateTime.Now.ToShortDateString());
             }
 
             /* 
-             * Создаем диспетчер данного окна, 
+             * Создаем диспетчер данного приложения, 
              * чтобы с ним можно было взаимодействовать из обработчика заданий печати.
              */
             dispatcher = Application.Current.Dispatcher;
@@ -113,27 +116,41 @@ namespace PrintOrdersGUI
             /*
              * Создаем обработчик смены дня.
              * Как только наступает новый день, 
-             * обработчик сбрасывается и в реестре обновляется значение dateOnShutdown.
+             * обработчик сбрасывается и в реестре обновляется значение lastDate.
              */
             MidnightNotifier.DayChanged += (s, e) => 
             {
                 IdCounter = 0;
-                rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
+                rk.SetValue("lastDate", DateTime.Now.ToShortDateString());
             };
-            pausedJobs = new SortedDictionary<int, JobPagesInfo>();
-            rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
 
-            /*
-             * Получаем ссылку на очередь печати по умолчанию,
-             * инициализируем монитор печати и обработчик заданий печати.
-             */
+            // Создаем список, в котором будем хранить приостановленные задания печати.
+            pausedJobs = new SortedDictionary<int, JobPagesInfo>();
+            
+            // Получаем ссылку на очередь печати по умолчанию.
             pq = LocalPrintServer.GetDefaultPrintQueue();
-            pqm = new PrintQueueMonitor(pq.Name);
+            printerName = pq.Name;
+
+            // Проверяем статус принтера при запуске программы.
+            ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT * FROM Win32_Printer");
+            var unit = from ManagementObject x in searcher.Get()
+                       where x.Properties["Name"].Value.ToString() == printerName
+                       select x;
+            currentPrinterStatus = bool.Parse(unit.First()["WorkOffline"].ToString());
+            CheckPrinterStatus(currentPrinterStatus);
+
+            // Инициализируем монитор печати и обработчик заданий печати.
+            pqm = new PrintQueueMonitor(printerName);
             pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
 
-            notifyIcon.Text = "PrintOrders\nРаботает (" + pq.Name + ")";
+            // Создаем обработчик изменения статуса принтера.
+            string wmiQuery = "Select * From __InstanceModificationEvent Within 1 " +
+            "Where TargetInstance ISA 'Win32_Printer' AND TargetInstance.Name ='" + printerName + "'";
+            ManagementEventWatcher watcher = new ManagementEventWatcher(new ManagementScope("\\root\\CIMV2"), new EventQuery(wmiQuery));
+            watcher.EventArrived += new EventArrivedEventHandler(WmiEventHandler);
+            watcher.Start();            
         }
-        
+
 
         /*
          * Обработчик заданий печати.
@@ -144,13 +161,31 @@ namespace PrintOrdersGUI
         {
             /* 
              * Если последнее задание - это финальный файл orderInfo, 
-             * то мы его пропускаем.
+             * то сбрасываем значения и скрываем окно.
              */
             if (e.JobName == "orderInfo")
+            {
+                if(e.JobStatus == 0)
+                {
+                    pausedJobs.Clear();
+                    dispatcher.BeginInvoke(new Action(delegate { CloseOrder(); }));
+                }
                 return;
+            }
 
             // Блокируем кнопки окна, пока задание обрабатывается.
             dispatcher.BeginInvoke(new Action(delegate { BlockButtons(); }));
+
+            /*
+             * Если задание было добавлено в очередь, когда принтер был выключен,
+             * то статус задания иногда может дублироваться, 
+             * поэтому второй статус не обрабатывается, чтобы не создавалось новое окно.
+             */
+            if (e.JobStatus == 0 && pausedJobs.ContainsKey(e.JobID))
+            {
+                dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
+                return;
+            }
 
             // Обработка удаляемого задания.
             if ((e.JobStatus & JOBSTATUS.JOB_STATUS_DELETING) == JOBSTATUS.JOB_STATUS_DELETING)
@@ -158,7 +193,7 @@ namespace PrintOrdersGUI
                 /*
                  * Отнимаем кол-во страниц задания от общего кол-ва и
                  * удаляем задание из списка приостановленных заданий.
-                 * Разблокируем кнопки окна.
+                 * Срабатывает, если вручную удалять задание из общего списка заданий.
                  */
                 if (pausedJobs.ContainsKey(e.JobID))
                 {
@@ -167,30 +202,29 @@ namespace PrintOrdersGUI
                     if (orderIsCreated)
                         dispatcher.BeginInvoke(new Action(delegate { UpdateFilesList(); }));
                 }
+
                 dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
 
                 /*
                  * В случае, если общий список или список приостановленных заданий пуст,
                  * сбрасываем значения и скрываем окно.
                  */
-                PrintJobInfoCollection pjic = LocalPrintServer.GetDefaultPrintQueue().GetPrintJobInfoCollection();
-                if (orderIsCreated && (!pausedJobs.Any() || !pjic.Any()))
-                {
-                    orderIsCreated = false;
+                PrintJobInfoCollection allJobs = LocalPrintServer.GetDefaultPrintQueue().GetPrintJobInfoCollection();
+                if (!allJobs.Any())
                     pausedJobs.Clear();
-                    totalPages = 0;
-                    dispatcher.BeginInvoke(new Action(delegate { Hide(); }));
-                }
+                if (orderIsCreated && !pausedJobs.Any())
+                    dispatcher.BeginInvoke(new Action(delegate { CloseOrder(); }));
                 return;
             }
 
-            // Пропускаем задание, если его статус - "приостановлен"
+            // Пропускаем задание, если его статус - "приостановлен" или информация о нем пуста.
             if((e.JobStatus & JOBSTATUS.JOB_STATUS_PAUSED) == JOBSTATUS.JOB_STATUS_PAUSED || 
                 e.JobInfo == null)
             {
                 dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
                 return;
             }
+                      
 
             /*
              * Когда задание подсчитает страницы (задание перестанет "спулить"),
@@ -198,7 +232,7 @@ namespace PrintOrdersGUI
              * кол-во его страниц добавится к общему кол-ву,
              * и список файлов в окне приложения обновится.
              */
-            if ((e.JobStatus & JOBSTATUS.JOB_STATUS_SPOOLING) != JOBSTATUS.JOB_STATUS_SPOOLING && 
+            if (((e.JobStatus & JOBSTATUS.JOB_STATUS_SPOOLING) != JOBSTATUS.JOB_STATUS_SPOOLING) && 
                 !pausedJobs.ContainsKey(e.JobID))
             {
                 e.JobInfo.Pause();
@@ -223,6 +257,40 @@ namespace PrintOrdersGUI
             dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
         }
 
+        /* 
+         * Обработчик изменения статуса принтера.
+         * Если состояние изменилось, 
+         * то перезапускаем монитор печати и обновляем иконку в трее.
+         */
+        private void WmiEventHandler(object sender, EventArrivedEventArgs e)
+        {
+            ManagementBaseObject printer = (ManagementBaseObject)e.NewEvent.Properties["TargetInstance"].Value;
+            bool newPrinterStatus = bool.Parse(printer["WorkOffline"].ToString());
+            if (currentPrinterStatus != newPrinterStatus)
+            {
+                currentPrinterStatus = newPrinterStatus;
+                if (pqm != null) pqm.Stop();
+                pqm = new PrintQueueMonitor(printerName);
+                pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
+                CheckPrinterStatus(newPrinterStatus);
+            }            
+        }
+
+        // Обновление иконки в трее в зависимости от статуса принтера.
+        private void CheckPrinterStatus(bool printerIsOffline)
+        {
+            if (!printerIsOffline)
+            {
+                notifyIcon.Icon = PrintOrders.Properties.Resources.printer;
+                notifyIcon.Text = "PrintOrders\nРаботает (" + printerName + ")";
+            }
+            else
+            {
+                notifyIcon.Icon = PrintOrders.Properties.Resources.printer_warning;
+                notifyIcon.Text = "PrintOrders\nПринтер не подключен (" + printerName + ")";
+            }
+        }
+
         /*
          * Создание нового заказа.
          * Номер заказа создается по принципу
@@ -231,8 +299,6 @@ namespace PrintOrdersGUI
          */
         private void CreateOrder()
         {
-            pagesLabel.Text = "";
-
             IPHostEntry hostEntry = Dns.GetHostEntry(Dns.GetHostName());
             IPAddress[] addr = hostEntry.AddressList;
             var ip = addr.Where(x => x.AddressFamily == AddressFamily.InterNetwork).FirstOrDefault();
@@ -273,6 +339,19 @@ namespace PrintOrdersGUI
         }
 
         /* 
+         * Закрытие заказа.
+         * Общее количество страниц становится равным 0, 
+         * окно скрывается и 
+         * флаг orderIsCreated становится равным false.
+         */
+        void CloseOrder()
+        {
+            totalPages = 0;
+            Hide();
+            orderIsCreated = false;
+        }
+
+        /* 
          * При нажатии на кнопку "Печатать еще файл", 
          * окно сворачивается.
          */
@@ -283,7 +362,8 @@ namespace PrintOrdersGUI
 
         /* 
          * При нажатии на кнопку "Отменить все", 
-         * все задания из списка приостановленных заданий отменяются.
+         * все задания из списка приостановленных заданий отменяются и 
+         * счетчик номера откатывается на единицу.
          */
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
@@ -292,6 +372,7 @@ namespace PrintOrdersGUI
                 pq.GetJob(job.Key).Cancel();
             }
             pausedJobs.Clear();
+            IdCounter--;
         }
 
         /*
@@ -305,7 +386,19 @@ namespace PrintOrdersGUI
          */
         private void OkButton_Click(object sender, RoutedEventArgs e)
         {
-            foreach(KeyValuePair<int, JobPagesInfo> job in pausedJobs)
+            /* 
+             * Если на момент нажатия кнопки принтер не подключен,
+             * то запрещаем пользователю закончить заказ и 
+             * показываем окно с ошибкой. 
+             */ 
+            if (currentPrinterStatus)
+            {
+                MessageBox.Show("Принтер (" + printerName + ") не подключен!", "Внимание!",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            foreach (KeyValuePair<int, JobPagesInfo> job in pausedJobs)
             {
                 pq.GetJob(job.Key).Resume();
             }
@@ -352,9 +445,7 @@ namespace PrintOrdersGUI
                 result += "Номер заказа: " + orderId + "\n";
                 result += "Количество страниц: " + pages;
                 j.Graphics.DrawString(result, new Font("Arial", 14), Brushes.Black, 30, 30);
-            }
-            Hide();
-            orderIsCreated = false;
+            }            
         }
 
         /* 
@@ -373,7 +464,7 @@ namespace PrintOrdersGUI
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             notifyIcon.Visible = false;
-            rk.SetValue("dateOnShutdown", DateTime.Now.ToShortDateString());
+            rk.SetValue("lastDate", DateTime.Now.ToShortDateString());
         }
 
         // Блокировка кнопок.

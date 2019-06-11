@@ -1,6 +1,6 @@
 ﻿using System.Windows;
 
-namespace PrintJobsGUI
+namespace PrintOrdersGUI
 {
     /// <summary>
     /// Логика взаимодействия для App.xaml

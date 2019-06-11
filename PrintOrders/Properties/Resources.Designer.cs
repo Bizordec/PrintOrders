@@ -69,5 +69,15 @@ namespace PrintOrders.Properties {
                 return ((System.Drawing.Icon)(obj));
             }
         }
+        
+        /// <summary>
+        ///   Поиск локализованного ресурса типа System.Drawing.Icon, аналогичного (Значок).
+        /// </summary>
+        internal static System.Drawing.Icon printer_warning {
+            get {
+                object obj = ResourceManager.GetObject("printer_warning", resourceCulture);
+                return ((System.Drawing.Icon)(obj));
+            }
+        }
     }
 }

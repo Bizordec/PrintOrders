@@ -1,7 +1,7 @@
-﻿<Application x:Class="PrintJobsGUI.App"
+﻿<Application x:Class="PrintOrdersGUI.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:PrintJobsGUI"
+             xmlns:local="clr-namespace:PrintOrdersGUI"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
          

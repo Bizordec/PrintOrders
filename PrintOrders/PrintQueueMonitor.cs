@@ -37,14 +37,13 @@ namespace PQM
         public static extern bool OpenPrinter(String pPrinterName,
         out IntPtr phPrinter,
         Int32 pDefault);
-
-
-        [DllImport("winspool.drv", EntryPoint = "ClosePrinter",
-            SetLastError = true,
-            ExactSpelling = true,
-            CallingConvention = CallingConvention.StdCall)]
-        public static extern bool ClosePrinter
-        (Int32 hPrinter);
+        
+        [DllImport("winspool.drv",
+        EntryPoint = "ClosePrinter",
+        SetLastError = true,
+        ExactSpelling = true,
+        CallingConvention = CallingConvention.StdCall)]
+        public static extern bool ClosePrinter(IntPtr hPrinter);
 
         [DllImport("winspool.drv",
         EntryPoint = "FindFirstPrinterChangeNotification",
@@ -129,7 +128,7 @@ namespace PQM
                 //We got a valid Printer handle.  Let us register for change notification....
                 _changeHandle = FindFirstPrinterChangeNotification(_printerHandle, (int)PRINTER_CHANGES.PRINTER_CHANGE_JOB, 0, _notifyOptions);
                 // We have successfully registered for change notification.  Let us capture the handle...
-                _mrEvent.SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(_changeHandle, true);
+                _mrEvent.SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(_changeHandle, false);
                 //Now, let us wait for change notification from the printer queue....
                 _waitHandle = ThreadPool.RegisterWaitForSingleObject(_mrEvent, new WaitOrTimerCallback(PrinterNotifyWaitCallback), _mrEvent, -1, true);
             }
@@ -147,7 +146,7 @@ namespace PQM
         {
             if (_printerHandle != IntPtr.Zero)
             {
-                ClosePrinter((int)_printerHandle);
+                ClosePrinter(_printerHandle);
                 _printerHandle = IntPtr.Zero;
             }
         }
@@ -164,7 +163,7 @@ namespace PQM
             IntPtr pNotifyInfo = IntPtr.Zero;
             bool bResult = FindNextPrinterChangeNotification(_changeHandle, out pdwChange, _notifyOptions, out pNotifyInfo);
             //If the Printer Change Notification Call did not give data, exit code
-            if ((bResult == false) || (((int)pNotifyInfo) == 0)) return;
+            if ((bResult == false) || (((long)pNotifyInfo) == 0)) return;
 
             //If the Change Notification was not relgated to job, exit code
             bool bJobRelatedChange = ((pdwChange & PRINTER_CHANGES.PRINTER_CHANGE_ADD_JOB) == PRINTER_CHANGES.PRINTER_CHANGE_ADD_JOB) || 
@@ -177,7 +176,7 @@ namespace PQM
             #region populate Notification Information
             //Now, let us initialize and populate the Notify Info data            
             PRINTER_NOTIFY_INFO info = (PRINTER_NOTIFY_INFO)Marshal.PtrToStructure(pNotifyInfo, typeof(PRINTER_NOTIFY_INFO));
-            long pData = (int)pNotifyInfo + (long)Marshal.OffsetOf(typeof(PRINTER_NOTIFY_INFO), "aData");
+            long pData = (long)pNotifyInfo + (long)Marshal.OffsetOf(typeof(PRINTER_NOTIFY_INFO), "aData");
             PRINTER_NOTIFY_INFO_DATA[] data = new PRINTER_NOTIFY_INFO_DATA[info.Count];
             for (uint i = 0; i < info.Count; i++)
             {
