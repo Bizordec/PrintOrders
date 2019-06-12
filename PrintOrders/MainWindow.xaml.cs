@@ -37,6 +37,7 @@ namespace PrintOrdersGUI
         }
         private SortedDictionary<int, JobPagesInfo> pausedJobs = null;        
         private bool orderIsCreated = false;
+        private bool orderIsPrinting = false;
         private int totalPages = 0;
         private string orderId = "";
         private System.Windows.Forms.NotifyIcon notifyIcon = null;
@@ -148,7 +149,7 @@ namespace PrintOrdersGUI
             "Where TargetInstance ISA 'Win32_Printer' AND TargetInstance.Name ='" + printerName + "'";
             ManagementEventWatcher watcher = new ManagementEventWatcher(new ManagementScope("\\root\\CIMV2"), new EventQuery(wmiQuery));
             watcher.EventArrived += new EventArrivedEventHandler(WmiEventHandler);
-            watcher.Start();            
+            watcher.Start();
         }
 
 
@@ -165,16 +166,11 @@ namespace PrintOrdersGUI
              */
             if (e.JobName == "orderInfo")
             {
-                if(e.JobStatus == 0)
-                {
-                    pausedJobs.Clear();
-                    dispatcher.BeginInvoke(new Action(delegate { CloseOrder(); }));
-                }
                 return;
             }
 
             // Блокируем кнопки окна, пока задание обрабатывается.
-            dispatcher.BeginInvoke(new Action(delegate { BlockButtons(); }));
+            dispatcher.Invoke(new Action(delegate { BlockButtons(); }));
 
             /*
              * Если задание было добавлено в очередь, когда принтер был выключен,
@@ -183,12 +179,12 @@ namespace PrintOrdersGUI
              */
             if (e.JobStatus == 0 && pausedJobs.ContainsKey(e.JobID))
             {
-                dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
+                dispatcher.Invoke(new Action(delegate { UnblockButtons(); }));
                 return;
             }
 
             // Обработка удаляемого задания.
-            if ((e.JobStatus & JOBSTATUS.JOB_STATUS_DELETING) == JOBSTATUS.JOB_STATUS_DELETING)
+            if (((e.JobStatus & JOBSTATUS.JOB_STATUS_DELETING) == JOBSTATUS.JOB_STATUS_DELETING) && orderIsCreated)
             {
                 /*
                  * Отнимаем кол-во страниц задания от общего кол-ва и
@@ -199,97 +195,62 @@ namespace PrintOrdersGUI
                 {
                     totalPages -= pausedJobs[e.JobID].TotalPages;
                     pausedJobs.Remove(e.JobID);
-                    if (orderIsCreated)
-                        dispatcher.BeginInvoke(new Action(delegate { UpdateFilesList(); }));
+
+                    /* 
+                     * Окно обновляется только в том случае, если
+                     * задание удаляется вручную.
+                     */ 
+                    if (!orderIsPrinting)
+                        dispatcher.Invoke(new Action(delegate { UpdateFilesList(); }));
                 }
 
-                dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
+                dispatcher.Invoke(new Action(delegate { UnblockButtons(); }));
 
                 /*
                  * В случае, если общий список или список приостановленных заданий пуст,
                  * сбрасываем значения и скрываем окно.
                  */
-                PrintJobInfoCollection allJobs = LocalPrintServer.GetDefaultPrintQueue().GetPrintJobInfoCollection();
-                if (!allJobs.Any())
+                if (!LocalPrintServer.GetDefaultPrintQueue().GetPrintJobInfoCollection().Any())
                     pausedJobs.Clear();
-                if (orderIsCreated && !pausedJobs.Any())
-                    dispatcher.BeginInvoke(new Action(delegate { CloseOrder(); }));
+                if (!pausedJobs.Any())
+                    dispatcher.Invoke(new Action(delegate { CloseOrder(); }));
                 return;
             }
 
             // Пропускаем задание, если его статус - "приостановлен" или информация о нем пуста.
-            if((e.JobStatus & JOBSTATUS.JOB_STATUS_PAUSED) == JOBSTATUS.JOB_STATUS_PAUSED || 
+            if (((e.JobStatus & JOBSTATUS.JOB_STATUS_PAUSED) == JOBSTATUS.JOB_STATUS_PAUSED) ||
                 e.JobInfo == null)
             {
-                dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
+                dispatcher.Invoke(new Action(delegate { UnblockButtons(); }));
                 return;
             }
-                      
 
             /*
              * Когда задание подсчитает страницы (задание перестанет "спулить"),
              * оно приостановится, добавится в список приостановленных заданий,
-             * кол-во его страниц добавится к общему кол-ву,
-             * и список файлов в окне приложения обновится.
+             * и кол-во его страниц добавится к общему кол-ву. 
+             * Если это первое добавленное задание, то появится новое окно заказа, 
+             * иначе - список файлов в существующем окне обновится.
              */
-            if (((e.JobStatus & JOBSTATUS.JOB_STATUS_SPOOLING) != JOBSTATUS.JOB_STATUS_SPOOLING) && 
+            if (((e.JobStatus & JOBSTATUS.JOB_STATUS_SPOOLING) != JOBSTATUS.JOB_STATUS_SPOOLING) &&
                 !pausedJobs.ContainsKey(e.JobID))
             {
                 e.JobInfo.Pause();
                 JobPagesInfo job = new JobPagesInfo(e.JobInfo.NumberOfPages, e.JobCopies);
                 pausedJobs.Add(e.JobID, job);
                 totalPages += job.TotalPages;
-
-                /* 
-                 * В случае поступления первого задания, 
-                 * создается новый заказ.
-                 */
                 if (!orderIsCreated)
                 {
                     orderIsCreated = true;
-                    dispatcher.BeginInvoke(new Action(delegate { CreateOrder(); }));
+                    dispatcher.Invoke(new Action(delegate { CreateOrder(); }));
                 }
                 else
                 {
-                    dispatcher.BeginInvoke(new Action(delegate { UpdateFilesList(); }));
+                    dispatcher.Invoke(new Action(delegate { UpdateFilesList(); }));
                 }
             }
-            dispatcher.BeginInvoke(new Action(delegate { UnblockButtons(); }));
-        }
-
-        /* 
-         * Обработчик изменения статуса принтера.
-         * Если состояние изменилось, 
-         * то перезапускаем монитор печати и обновляем иконку в трее.
-         */
-        private void WmiEventHandler(object sender, EventArrivedEventArgs e)
-        {
-            ManagementBaseObject printer = (ManagementBaseObject)e.NewEvent.Properties["TargetInstance"].Value;
-            bool newPrinterStatus = bool.Parse(printer["WorkOffline"].ToString());
-            if (currentPrinterStatus != newPrinterStatus)
-            {
-                currentPrinterStatus = newPrinterStatus;
-                if (pqm != null) pqm.Stop();
-                pqm = new PrintQueueMonitor(printerName);
-                pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
-                CheckPrinterStatus(newPrinterStatus);
-            }            
-        }
-
-        // Обновление иконки в трее в зависимости от статуса принтера.
-        private void CheckPrinterStatus(bool printerIsOffline)
-        {
-            if (!printerIsOffline)
-            {
-                notifyIcon.Icon = PrintOrders.Properties.Resources.printer;
-                notifyIcon.Text = "PrintOrders\nРаботает (" + printerName + ")";
-            }
-            else
-            {
-                notifyIcon.Icon = PrintOrders.Properties.Resources.printer_warning;
-                notifyIcon.Text = "PrintOrders\nПринтер не подключен (" + printerName + ")";
-            }
-        }
+            dispatcher.Invoke(new Action(delegate { UnblockButtons(); }));
+        }       
 
         /*
          * Создание нового заказа.
@@ -341,13 +302,14 @@ namespace PrintOrdersGUI
         /* 
          * Закрытие заказа.
          * Общее количество страниц становится равным 0, 
-         * окно скрывается и 
-         * флаг orderIsCreated становится равным false.
+         * окно скрывается, и 
+         * флаги orderIsPrinting и orderIsCreated становятся равными false.
          */
         void CloseOrder()
         {
             totalPages = 0;
-            Hide();
+            if(IsVisible) Hide();
+            orderIsPrinting = false;
             orderIsCreated = false;
         }
 
@@ -362,8 +324,7 @@ namespace PrintOrdersGUI
 
         /* 
          * При нажатии на кнопку "Отменить все", 
-         * все задания из списка приостановленных заданий отменяются и 
-         * счетчик номера откатывается на единицу.
+         * все задания из списка приостановленных заданий отменяются.
          */
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
@@ -371,8 +332,6 @@ namespace PrintOrdersGUI
             {
                 pq.GetJob(job.Key).Cancel();
             }
-            pausedJobs.Clear();
-            IdCounter--;
         }
 
         /*
@@ -397,23 +356,23 @@ namespace PrintOrdersGUI
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-
+            orderIsPrinting = true;
             foreach (KeyValuePair<int, JobPagesInfo> job in pausedJobs)
             {
                 pq.GetJob(job.Key).Resume();
             }
-            
+
             PrintDocument printDocument = new PrintDocument
             {
-                DocumentName = "orderInfo"
+                DocumentName = "orderInfo",
+                PrinterSettings = new PrinterSettings { Copies = 1 }
             };
-            string pages = totalPages.ToString();
-
             printDocument.PrintPage += new PrintPageEventHandler(PrintPageHandler);
             printDocument.Print();
             
             void PrintPageHandler(object s, PrintPageEventArgs j)
             {
+                string pages = totalPages.ToString();
                 string infoDirPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + "\\PrintOrders\\";
                 if(!Directory.Exists(infoDirPath))
                     Directory.CreateDirectory(infoDirPath);
@@ -445,7 +404,8 @@ namespace PrintOrdersGUI
                 result += "Номер заказа: " + orderId + "\n";
                 result += "Количество страниц: " + pages;
                 j.Graphics.DrawString(result, new Font("Arial", 14), Brushes.Black, 30, 30);
-            }            
+            }
+            Hide();
         }
 
         /* 
@@ -481,6 +441,40 @@ namespace PrintOrdersGUI
             addButton.IsEnabled = true;
             cancelButton.IsEnabled = true;
             okButton.IsEnabled = true;
+        }
+
+        /* 
+         * Обработчик изменения статуса принтера.
+         * Если состояние изменилось, 
+         * то перезапускаем монитор печати и обновляем иконку в трее.
+         */
+        private void WmiEventHandler(object sender, EventArrivedEventArgs e)
+        {
+            ManagementBaseObject printer = (ManagementBaseObject)e.NewEvent.Properties["TargetInstance"].Value;
+            bool newPrinterStatus = bool.Parse(printer["WorkOffline"].ToString());
+            if (currentPrinterStatus != newPrinterStatus)
+            {
+                currentPrinterStatus = newPrinterStatus;
+                pqm?.Stop();
+                pqm = new PrintQueueMonitor(printerName);
+                pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
+                CheckPrinterStatus(newPrinterStatus);
+            }
+        }
+
+        // Обновление иконки в трее в зависимости от статуса принтера.
+        private void CheckPrinterStatus(bool printerIsOffline)
+        {
+            if (!printerIsOffline)
+            {
+                notifyIcon.Icon = PrintOrders.Properties.Resources.printer;
+                notifyIcon.Text = "PrintOrders\nРаботает (" + printerName + ")";
+            }
+            else
+            {
+                notifyIcon.Icon = PrintOrders.Properties.Resources.printer_warning;
+                notifyIcon.Text = "PrintOrders\nПринтер не подключен (" + printerName + ")";
+            }
         }
 
         // Обработка смены дня.
