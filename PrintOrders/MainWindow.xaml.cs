@@ -79,6 +79,8 @@ namespace PrintOrdersGUI
                 Visible = true,
             };
             System.Windows.Forms.ContextMenu niContextMenu = new System.Windows.Forms.ContextMenu();
+            niContextMenu.MenuItems.Add("Перезапустить монитор печати", new EventHandler(Restart));
+            niContextMenu.MenuItems.Add("-");
             niContextMenu.MenuItems.Add("Выход", new EventHandler(Exit));
             notifyIcon.ContextMenu = niContextMenu;
 
@@ -411,6 +413,15 @@ namespace PrintOrdersGUI
             CloseOrder();
         }
 
+        /*
+         * Перезапуск монитора печати при нажатии на кнопку "Перезапустить монитор печати" 
+         * в контекстном меню у иконки в трее.
+         */
+        private void Restart(object sender, EventArgs e)
+        {
+            RestartPQM();
+        }
+
         /* 
          * Закрытие приложения при нажатии на кнопку "Выход" 
          * в контекстном меню у иконки в трее.
@@ -458,10 +469,7 @@ namespace PrintOrdersGUI
             if (currentPrinterStatus != newPrinterStatus)
             {
                 currentPrinterStatus = newPrinterStatus;
-                pqm?.Stop();
-                pqm = null;
-                pqm = new PrintQueueMonitor(printerName);
-                pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
+                RestartPQM();
                 CheckPrinterStatus(newPrinterStatus);
             }
         }
@@ -479,6 +487,14 @@ namespace PrintOrdersGUI
                 notifyIcon.Icon = PrintOrders.Properties.Resources.printer_warning;
                 notifyIcon.Text = "PrintOrders\nПринтер не подключен (" + printerName + ")";
             }
+        }
+
+        private void RestartPQM()
+        {
+            pqm?.Stop();
+            pqm = null;
+            pqm = new PrintQueueMonitor(printerName);
+            pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
         }
 
         // Обработка смены дня.
