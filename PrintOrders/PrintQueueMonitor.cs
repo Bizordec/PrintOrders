@@ -4,6 +4,7 @@ using System.Linq;
 using System.Printing;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Diagnostics;
 using PrintSpool;
 
 namespace PQM
@@ -201,17 +202,16 @@ namespace PQM
                     try
                     {
                         _spooler = new PrintQueue(new PrintServer(), _spoolerName);
-                        pji = _spooler.GetJob(intJobID);                       
+                        pji = _spooler.GetJob(intJobID);
                         if (!objJobDict.ContainsKey(intJobID))
                             objJobDict[intJobID] = pji.Name;
                         strJobName = pji.Name;
 
-                        bool result;
-                        result = GetJob(_printerHandle, (uint)intJobID, 2, IntPtr.Zero, 0, out uint needed);
+                        GetJob(_printerHandle, (uint)intJobID, 2, IntPtr.Zero, 0, out uint needed);
                         if (Marshal.GetLastWin32Error() == ERROR_INSUFFICIENT_BUFFER)
                         {
                             IntPtr buffer = Marshal.AllocHGlobal((int)needed);
-                            result = GetJob(_printerHandle, (uint)intJobID, 2, buffer, needed, out needed);
+                            GetJob(_printerHandle, (uint)intJobID, 2, buffer, needed, out needed);
                             JOB_INFO_2 jobInfo = (JOB_INFO_2)Marshal.PtrToStructure(buffer, typeof(JOB_INFO_2));
                             DEVMODE dMode = (DEVMODE)Marshal.PtrToStructure(jobInfo.pDevMode, typeof(DEVMODE));
                             shortJobCopies = dMode.dmCopies;
@@ -225,7 +225,6 @@ namespace PQM
                         objJobDict.TryGetValue(intJobID, out strJobName);
                         if (strJobName == null) strJobName = "";
                     }
-                    
                     //Let us raise the event
                     OnJobStatusChange?.Invoke(this, new PrintJobChangeEventArgs(intJobID, strJobName, jStatus, pji, uintJobTotalPages, shortJobCopies));
                 }
