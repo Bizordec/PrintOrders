@@ -2,6 +2,18 @@
 using System.Runtime.InteropServices;
 using System.Globalization;
 
+/*
+ * Основной код описан здесь:
+ * https://www.codeproject.com/Articles/51085/Monitor-jobs-in-a-printer-queue-NET
+ * 
+ * Добавлена поддержка 64-бит систем:
+ * https://stackoverflow.com/questions/12792508/how-to-correctly-define-print-notify-info-data)
+ * Добавлено получение кол-ва страниц и кол-ва копий: 
+ * https://stackoverflow.com/questions/45709533/an-exception-occur-when-calling-winspool-drv-getjob-function-in-c-sharp
+ * Чтобы учитывались копии из Word, необходимо в реестре добавить значение ForceSetCopyCount:
+ * https://support.microsoft.com/en-us/help/919736/the-dmcopies-member-always-returns-a-value-of-1-when-you-try-to-retrie
+ */
+
 namespace PrintSpool
 {
     public enum JOBCONTROL
