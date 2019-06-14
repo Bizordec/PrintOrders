@@ -44,7 +44,8 @@ namespace PQM
         SetLastError = true,
         ExactSpelling = true,
         CallingConvention = CallingConvention.StdCall)]
-        public static extern bool ClosePrinter(IntPtr hPrinter);
+        public static extern bool ClosePrinter
+        (IntPtr hPrinter);
 
         [DllImport("winspool.drv",
         EntryPoint = "FindFirstPrinterChangeNotification",
@@ -232,8 +233,12 @@ namespace PQM
             #endregion
 
             #region reset the Event and wait for the next event
-            _mrEvent.Reset();
-            _waitHandle = ThreadPool.RegisterWaitForSingleObject(_mrEvent, new WaitOrTimerCallback(PrinterNotifyWaitCallback), _mrEvent, -1, true);
+            try
+            {
+                _mrEvent.Reset();
+                _waitHandle = ThreadPool.RegisterWaitForSingleObject(_mrEvent, new WaitOrTimerCallback(PrinterNotifyWaitCallback), _mrEvent, -1, true);
+            }
+            catch { }
             #endregion
         }
         #endregion

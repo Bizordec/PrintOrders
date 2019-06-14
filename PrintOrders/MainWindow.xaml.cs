@@ -29,6 +29,7 @@ namespace PrintOrdersGUI
         private PrintQueue pq = null;
         private string printerName = "";
         private bool currentPrinterStatus = false;
+        private bool testSucceeded = false;
         private PrintQueueMonitor pqm = null;
         private int IdCounter
         {
@@ -72,16 +73,19 @@ namespace PrintOrdersGUI
             // Окно появляется только при созданном заказе, поэтому изначально оно скрыто.
             Hide();
 
-            // Добавляем иконку в область уведомлений с возможностью выхода из программы.
+            /* 
+             * Добавляем иконку в область уведомлений 
+             * с возможностью перезапуска монитора печати и выхода из программы.
+             */
             notifyIcon = new System.Windows.Forms.NotifyIcon
             {
                 Icon = PrintOrders.Properties.Resources.printer,
                 Visible = true,
             };
             System.Windows.Forms.ContextMenu niContextMenu = new System.Windows.Forms.ContextMenu();
-            niContextMenu.MenuItems.Add("Перезапустить монитор печати", new EventHandler(Restart));
+            niContextMenu.MenuItems.Add("Перезапустить монитор печати", (s, e) => { StartPQM(); });
             niContextMenu.MenuItems.Add("-");
-            niContextMenu.MenuItems.Add("Выход", new EventHandler(Exit));
+            niContextMenu.MenuItems.Add("Выход", (s, e) => { Close(); });
             notifyIcon.ContextMenu = niContextMenu;
 
             /*
@@ -146,8 +150,7 @@ namespace PrintOrdersGUI
             CheckPrinterStatus(currentPrinterStatus);
 
             // Инициализируем монитор печати и обработчик заданий печати.
-            pqm = new PrintQueueMonitor(printerName);
-            pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
+            StartPQM();
 
             // Создаем обработчик изменения статуса принтера.
             string wmiQuery = "Select * From __InstanceModificationEvent Within 1 " +
@@ -156,8 +159,7 @@ namespace PrintOrdersGUI
             watcher.EventArrived += new EventArrivedEventHandler(WmiEventHandler);
             watcher.Start();
         }
-
-
+        
         /*
          * Обработчик заданий печати.
          * В переменной e хранится информация о задании 
@@ -171,6 +173,25 @@ namespace PrintOrdersGUI
              */
             if (e.JobName == "orderInfo")
                 return;
+
+            /*
+             * Обработка тестового задания при запуске монитора очереди печати.
+             * При отмене этого задания, в методе PrintTest возникнет исключение.
+             */
+            if (e.JobName == "testPrintQueueMonitor")
+            {
+                if(e.JobInfo == null)
+                {
+                    return;
+                }
+                if ((e.JobStatus & JOBSTATUS.JOB_STATUS_SPOOLING) == JOBSTATUS.JOB_STATUS_SPOOLING && 
+                    !testSucceeded)
+                {
+                    testSucceeded = true;
+                    e.JobInfo.Cancel();
+                }
+                return;
+            }
 
             // Если задание в процессе удаления, то пропускаем его.
             if(deletingJobs.Contains(e.JobID))
@@ -190,7 +211,7 @@ namespace PrintOrdersGUI
             if (e.JobStatus == 0 && pausedJobs.ContainsKey(e.JobID))
                 return;
 
-            // Обработка удаляемого задания.
+            // Обработка вручную удаляемого задания.
             if (((e.JobStatus & JOBSTATUS.JOB_STATUS_DELETING) == JOBSTATUS.JOB_STATUS_DELETING) && orderIsCreated)
             {
                 /*
@@ -373,7 +394,9 @@ namespace PrintOrdersGUI
             };
             printDocument.PrintPage += new PrintPageEventHandler(PrintPageHandler);
             printDocument.Print();
-            
+            pausedJobs.Clear();
+            CloseOrder();
+
             void PrintPageHandler(object s, PrintPageEventArgs j)
             {
                 string pages = totalPages.ToString();
@@ -409,27 +432,8 @@ namespace PrintOrdersGUI
                 result += "Количество страниц: " + pages;
                 j.Graphics.DrawString(result, new Font("Arial", 14), Brushes.Black, 30, 30);
             }
-            pausedJobs.Clear();
-            CloseOrder();
         }
-
-        /*
-         * Перезапуск монитора печати при нажатии на кнопку "Перезапустить монитор печати" 
-         * в контекстном меню у иконки в трее.
-         */
-        private void Restart(object sender, EventArgs e)
-        {
-            RestartPQM();
-        }
-
-        /* 
-         * Закрытие приложения при нажатии на кнопку "Выход" 
-         * в контекстном меню у иконки в трее.
-         */
-        private void Exit(object sender, EventArgs e)
-        {
-            Close();       
-        }
+        
 
         /*
          * При закрытии окна, иконка скрывается и 
@@ -465,11 +469,13 @@ namespace PrintOrdersGUI
         private void WmiEventHandler(object sender, EventArrivedEventArgs e)
         {
             ManagementBaseObject printer = (ManagementBaseObject)e.NewEvent.Properties["TargetInstance"].Value;
+
             bool newPrinterStatus = bool.Parse(printer["WorkOffline"].ToString());
             if (currentPrinterStatus != newPrinterStatus)
             {
+                Debug.WriteLine("\nSTATUS CHANGED!!!");
                 currentPrinterStatus = newPrinterStatus;
-                RestartPQM();
+                StartPQM();
                 CheckPrinterStatus(newPrinterStatus);
             }
         }
@@ -489,13 +495,56 @@ namespace PrintOrdersGUI
             }
         }
 
-        private void RestartPQM()
+        // Запуск монитора печати и печать тестового файла.
+        private void StartPQM()
         {
             pqm?.Stop();
-            pqm = null;
             pqm = new PrintQueueMonitor(printerName);
             pqm.OnJobStatusChange += new PrintJobStatusChanged(Pqm_OnJobStatusChange);
+            PrintTest(false);
         }
+
+        // Печать тестового файла.
+        private void PrintTest(bool secondTest)
+        {
+            testSucceeded = false;
+            PrintDocument test = new PrintDocument
+            {
+                DocumentName = "testPrintQueueMonitor",
+                PrinterSettings = new PrinterSettings { Copies = 1 }
+            };
+
+            /* 
+             * Если монитор не работает, 
+             * то произойдет событие по окончании "спулинга",
+             * обработчик которого отменит тестовое задание печати и
+             * перезапустит монитор.
+             */
+            test.EndPrint += (s, e) =>
+            {
+                if (!testSucceeded)
+                {
+                    e.Cancel = true;
+                    StartPQM();
+                }
+            };
+
+            /* 
+             * Если монитор работает, то при отмене тестового файла 
+             * в обработчике Pqm_OnJobStatusChange, возникнет исключение.
+             * После первой "успешной" проверки монитор может все еще не работать, поэтому
+             * проверяем его еще раз.
+             */
+            try
+            {
+                test.Print();
+            }
+            catch
+            {
+                if (!secondTest)
+                    PrintTest(true);
+            }
+        }        
 
         // Обработка смены дня.
         static class MidnightNotifier
