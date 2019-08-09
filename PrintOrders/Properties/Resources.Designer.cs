@@ -8,7 +8,7 @@
 // </auto-generated>
 //------------------------------------------------------------------------------
 
-namespace PrintOrders.Properties {
+namespace PrintOrdersGUI.Properties {
     using System;
     
     

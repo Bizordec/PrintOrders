@@ -73,21 +73,6 @@ namespace PrintOrdersGUI
             // Окно появляется только при созданном заказе, поэтому изначально оно скрыто.
             Hide();
 
-            /* 
-             * Добавляем иконку в область уведомлений 
-             * с возможностью перезапуска монитора печати и выхода из программы.
-             */
-            notifyIcon = new System.Windows.Forms.NotifyIcon
-            {
-                Icon = PrintOrders.Properties.Resources.printer,
-                Visible = true,
-            };
-            System.Windows.Forms.ContextMenu niContextMenu = new System.Windows.Forms.ContextMenu();
-            niContextMenu.MenuItems.Add("Перезапустить монитор печати", (s, e) => { StartPQM(); });
-            niContextMenu.MenuItems.Add("-");
-            niContextMenu.MenuItems.Add("Выход", (s, e) => { Close(); });
-            notifyIcon.ContextMenu = niContextMenu;
-
             /*
              * Получаем из реестра подраздел HKEY_CURRENT_USER\Software\PrintOrders.
              * Если его не существует, то создаем новый.
@@ -114,12 +99,6 @@ namespace PrintOrdersGUI
                 rk.SetValue("lastDate", DateTime.Now.ToShortDateString());
             }
 
-            /* 
-             * Создаем диспетчер данного приложения, 
-             * чтобы с ним можно было взаимодействовать из обработчика заданий печати.
-             */
-            dispatcher = Application.Current.Dispatcher;
-
             /*
              * Создаем обработчик смены дня.
              * Как только наступает новый день, 
@@ -131,6 +110,12 @@ namespace PrintOrdersGUI
                 rk.SetValue("lastDate", DateTime.Now.ToShortDateString());
             };
 
+            /* 
+             * Создаем диспетчер данного приложения, 
+             * чтобы с ним можно было взаимодействовать из обработчика заданий печати.
+             */
+            dispatcher = Application.Current.Dispatcher;
+
             // Создаем список, в котором будем хранить приостановленные задания печати.
             pausedJobs = new SortedDictionary<int, JobPagesInfo>();
 
@@ -141,6 +126,24 @@ namespace PrintOrdersGUI
             pq = LocalPrintServer.GetDefaultPrintQueue();
             printerName = pq.Name;
 
+            // Инициализируем монитор печати и обработчик заданий печати.
+            StartPQM();
+
+            /* 
+             * Добавляем иконку в область уведомлений 
+             * с возможностью перезапуска монитора печати и выхода из программы.
+             */
+            notifyIcon = new System.Windows.Forms.NotifyIcon
+            {
+                Icon = Properties.Resources.printer,
+                Visible = true,
+            };
+            System.Windows.Forms.ContextMenu niContextMenu = new System.Windows.Forms.ContextMenu();
+            niContextMenu.MenuItems.Add("Перезапустить монитор печати", (s, e) => { StartPQM(); });
+            niContextMenu.MenuItems.Add("-");
+            niContextMenu.MenuItems.Add("Выход", (s, e) => { Close(); });
+            notifyIcon.ContextMenu = niContextMenu;
+
             // Проверяем статус принтера при запуске программы.
             ManagementObjectSearcher searcher = new ManagementObjectSearcher("SELECT * FROM Win32_Printer");
             var unit = from ManagementObject x in searcher.Get()
@@ -148,9 +151,6 @@ namespace PrintOrdersGUI
                        select x;
             currentPrinterStatus = bool.Parse(unit.First()["WorkOffline"].ToString());
             CheckPrinterStatus(currentPrinterStatus);
-
-            // Инициализируем монитор печати и обработчик заданий печати.
-            StartPQM();
 
             // Создаем обработчик изменения статуса принтера.
             string wmiQuery = "Select * From __InstanceModificationEvent Within 1 " +
@@ -292,7 +292,7 @@ namespace PrintOrdersGUI
             char randLetter = alphabet[rng.Next(alphabet.Length)];
             string letters = ipLetter.ToString() + randLetter.ToString();
             orderId = letters + "-" + lastpart.ToString() + IdCounter++.ToString();
-            orderLabel.Content = "Номер: " + orderId;
+            orderLabel.Text = "Номер: " + orderId;
             UpdateFilesList();
         }
 
@@ -311,7 +311,7 @@ namespace PrintOrdersGUI
                 pagesLabel.Text += "\r\n" + fileCount++ + "-й файл: ";
                 pagesLabel.Text += jobInfo.Pages != 0 ? jobInfo.Pages + " стр.\t(копий: " + jobInfo.Copies + ")" : "Н/Д";
             }
-            totalLabel.Content = "Итого: " + totalPages + " стр.";
+            totalLabel.Text = "Итого: " + totalPages + " стр.";
             if (!IsVisible)
             {
                 Show();
@@ -328,8 +328,8 @@ namespace PrintOrdersGUI
          * флаги orderIsPrinting и orderIsCreated становятся равными false.
          */
         void CloseOrder()
-        {
-            totalPages = 0;
+        {            
+            totalPages = 0;            
             Hide();
             orderIsCreated = false;
         }
@@ -381,6 +381,9 @@ namespace PrintOrdersGUI
                 return;
             }
 
+            BlockButtons();
+            infoLabel.Text = "Отправка на печать...";
+
             foreach (KeyValuePair<int, JobPagesInfo> job in pausedJobs)
             {
                 deletingJobs.Add(job.Key);
@@ -393,8 +396,17 @@ namespace PrintOrdersGUI
                 PrinterSettings = new PrinterSettings { Copies = 1 }
             };
             printDocument.PrintPage += new PrintPageEventHandler(PrintPageHandler);
+
+            //Печать без всплывающего окна.
+            printDocument.PrintController = new StandardPrintController();
             printDocument.Print();
             pausedJobs.Clear();
+
+            //Дополнительная проверка работы монитора печати
+            PrintTest(false);
+            infoLabel.Text = "Нажмите на кнопку \"Готово\", чтобы файлы отправились на печать";
+            UnblockButtons();
+
             CloseOrder();
 
             void PrintPageHandler(object s, PrintPageEventArgs j)
@@ -434,7 +446,6 @@ namespace PrintOrdersGUI
             }
         }
         
-
         /*
          * При закрытии окна, иконка скрывается и 
          * в реестр записывается текущая дата.
@@ -485,13 +496,13 @@ namespace PrintOrdersGUI
         {
             if (!printerIsOffline)
             {
-                notifyIcon.Icon = PrintOrders.Properties.Resources.printer;
-                notifyIcon.Text = "PrintOrders\nРаботает (" + printerName + ")";
+                notifyIcon.Icon = Properties.Resources.printer;
+                notifyIcon.Text = "PrintOrders 4.1\nРаботает (" + printerName + ")";
             }
             else
             {
-                notifyIcon.Icon = PrintOrders.Properties.Resources.printer_warning;
-                notifyIcon.Text = "PrintOrders\nПринтер не подключен (" + printerName + ")";
+                notifyIcon.Icon = Properties.Resources.printer_warning;
+                notifyIcon.Text = "PrintOrders 4.1\nПринтер не подключен (" + printerName + ")";
             }
         }
 
@@ -524,6 +535,7 @@ namespace PrintOrdersGUI
             {
                 if (!testSucceeded)
                 {
+                    Debug.WriteLine("Test failed");
                     e.Cancel = true;
                     StartPQM();
                 }
@@ -537,10 +549,13 @@ namespace PrintOrdersGUI
              */
             try
             {
+                //Печать без всплывающего окна.
+                test.PrintController = new StandardPrintController();
                 test.Print();
             }
             catch
             {
+                Debug.WriteLine("Test succeeded");
                 if (!secondTest)
                     PrintTest(true);
             }

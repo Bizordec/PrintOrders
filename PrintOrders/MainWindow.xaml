@@ -25,7 +25,7 @@
             <Setter Property="Height" Value="50"/>
             <Setter Property="FontSize" Value="30"/>
         </Style>
-        <Style TargetType="Label">
+        <Style TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="Foreground" Value="White"/>
@@ -41,10 +41,10 @@
             <RowDefinition Height="140"/>
             <RowDefinition Height="50"/>
         </Grid.RowDefinitions>
-        <Label x:Name="readyLabel" Grid.Row="0" Content="Ваш заказ в очереди! " FontSize="45"/>
-        <Label x:Name="orderLabel" Grid.Row="1" Content="Номер: " FontSize="70" FontWeight="Bold"/>
+        <TextBlock Grid.Row="0" Text="Ваш заказ в очереди! " FontSize="45"/>
+        <TextBlock x:Name="orderLabel" Grid.Row="1" Text="Номер: " FontSize="70" FontWeight="Bold"/>
         <TextBlock x:Name="pagesLabel" Grid.Row="2" FontSize="30" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center" TextWrapping="Wrap"/>
-        <Label x:Name="totalLabel" Grid.Row="3" Content="Итого: " FontSize="30"/>
+        <TextBlock x:Name="totalLabel" Grid.Row="3" Text="Итого: " FontSize="30"/>
         <Grid Grid.Row="4" Margin="35, 0" HorizontalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -58,6 +58,6 @@
             <Button x:Name="cancelButton" Grid.Column="0" Grid.Row="1" Content="Отменить всё" Click="CancelButton_Click"/>
             <Button x:Name="okButton" Grid.Column="1" Grid.Row="1" Content="Готово" Click="OkButton_Click" IsDefault="True"/>
         </Grid>
-        <Label x:Name="infoLabel" Grid.Row="5" Content='Нажмите на кнопку "Готово", чтобы файлы отправились на печать' FontSize="20"/>
+        <TextBlock x:Name="infoLabel" Grid.Row="5" Text='Нажмите на кнопку "Готово", чтобы файлы отправились на печать' FontSize="20"/>
     </Grid>
 </Window>
